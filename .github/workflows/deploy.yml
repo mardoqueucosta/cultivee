@@ -1,0 +1,58 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 129.121.50.168
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22022
+          script: |
+            set -e
+
+            cd /opt/sites/cultivee
+
+            # Backup atual
+            echo "=== Pulling latest code ==="
+
+            # Se não tem git no servidor, faz sync via download
+            if [ ! -d ".git" ]; then
+              # Limpa e baixa fresh do GitHub
+              rm -rf /tmp/cultivee-deploy
+              git clone --depth 1 https://github.com/mardoqueucosta/cultivee.git /tmp/cultivee-deploy
+
+              # Sync site
+              rm -rf site
+              cp -r /tmp/cultivee-deploy/site site
+
+              # Sync server
+              rm -rf server
+              cp -r /tmp/cultivee-deploy/server server
+
+              # Sync docker-compose
+              cp /tmp/cultivee-deploy/docker-compose.yml docker-compose.yml
+
+              rm -rf /tmp/cultivee-deploy
+            else
+              git pull origin main
+            fi
+
+            # Rebuild e restart containers
+            echo "=== Building containers ==="
+            docker compose up -d --build
+
+            # Verifica status
+            echo "=== Status ==="
+            docker ps --format 'table {{.Names}}\t{{.Status}}' | grep cultivee
+            echo "Deploy completed!"

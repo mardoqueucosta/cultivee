@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+venv/
+
+# Build
+dist/
+.next/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+.cloudflare.env
+
+# Database
+*.db
+
+# Data (images captured)
+server/data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code
+.claude/worktrees/
+.claude/settings.local.json

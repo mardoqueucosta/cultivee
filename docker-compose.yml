@@ -1,0 +1,45 @@
+services:
+  site:
+    build:
+      context: ./site
+      dockerfile: Dockerfile
+    container_name: cultivee-site
+    restart: unless-stopped
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cultivee-site.rule=Host(`cultivee.com.br`) || Host(`www.cultivee.com.br`)"
+      - "traefik.http.routers.cultivee-site.entrypoints=websecure"
+      - "traefik.http.routers.cultivee-site.tls.certresolver=letsencrypt"
+      - "traefik.http.services.cultivee-site.loadbalancer.server.port=80"
+
+  app:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: cultivee-app
+    restart: unless-stopped
+    environment:
+      - DATA_DIR=/app/data/images
+      - DB_PATH=/app/cultivee.db
+      - CAPTURE_INTERVAL=60
+    volumes:
+      - cultivee-data:/app/data
+      - cultivee-db:/app/cultivee.db
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cultivee-app.rule=Host(`app.cultivee.com.br`)"
+      - "traefik.http.routers.cultivee-app.entrypoints=websecure"
+      - "traefik.http.routers.cultivee-app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.cultivee-app.loadbalancer.server.port=5000"
+
+volumes:
+  cultivee-data:
+  cultivee-db:
+
+networks:
+  web:
+    external: true

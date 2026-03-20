@@ -1,0 +1,11 @@
+{
+  "name": "Cultivee Monitor",
+  "short_name": "Cultivee",
+  "description": "Monitoramento inteligente de hortaliças",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#16a34a",
+  "orientation": "any",
+  "icons": []
+}

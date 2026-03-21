@@ -1,6 +1,6 @@
 // Cultivee Service Worker
 // IMPORTANTE: Incrementar APP_VERSION a cada deploy para acionar atualizacao
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const CACHE_NAME = 'cultivee-v' + APP_VERSION;
 
 const STATIC_ASSETS = [

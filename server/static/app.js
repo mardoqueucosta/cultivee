@@ -362,11 +362,7 @@ function wizardShowStep(n) {
 }
 
 function wizardStart(mode) {
-    if (mode === "new") {
-        wizardShowStep(1);
-    } else {
-        wizardShowStep(3);
-    }
+    wizardShowStep(mode === "new" ? 1 : 3);
 }
 
 function wizardNext(step) { wizardShowStep(step); }
@@ -558,7 +554,7 @@ function checkPendingCode() {
 
         // Abre modal com codigo preenchido
         showPairModal();
-        wizardShowStep(4);
+        wizardShowStep(3);
         document.getElementById("pair-code").value = code;
         document.getElementById("pair-name").focus();
     }
@@ -764,7 +760,7 @@ function closeBleModal(event) {
 // PWA Install
 // =====================================================================
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 let deferredPrompt = null;
 
 // Registrar Service Worker + verificar atualizacoes

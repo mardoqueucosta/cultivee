@@ -295,55 +295,99 @@ void startAP(const char* ssid, const char* pass) {
 String getSetupPage() {
   // Scan redes
   int n = WiFi.scanNetworks();
-  String options = "";
-  for (int i = 0; i < n; i++) {
-    options += "<option value='" + WiFi.SSID(i) + "'>" +
-               WiFi.SSID(i) + " (" + String(WiFi.RSSI(i)) + " dBm)</option>";
+  String networks = "";
+  // Remover duplicatas e ordenar por sinal
+  String seen[20];
+  int seenCount = 0;
+  for (int i = 0; i < n && seenCount < 20; i++) {
+    String ssid = WiFi.SSID(i);
+    if (ssid.length() == 0) continue;
+    bool dup = false;
+    for (int j = 0; j < seenCount; j++) { if (seen[j] == ssid) { dup = true; break; } }
+    if (dup) continue;
+    seen[seenCount++] = ssid;
+    int rssi = WiFi.RSSI(i);
+    String bars = rssi > -50 ? "&#9602;&#9604;&#9606;" : rssi > -70 ? "&#9602;&#9604;" : "&#9602;";
+    bool open = WiFi.encryptionType(i) == WIFI_AUTH_OPEN;
+    networks += "<div class='net' onclick=\"sel('" + ssid + "'," + (open?"1":"0") + ")\">"
+      "<div><b>" + ssid + "</b><span class='sig'>" + bars + "</span></div>"
+      "<span class='lock'>" + (open ? "Aberta" : "&#128274;") + "</span></div>";
   }
+  WiFi.scanDelete();
+
+  String shortId = getShortId();
+  String appUrl = String(APP_URL) + "/?code=" + shortId;
 
   return "<!DOCTYPE html><html><head>"
     "<meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-    "<title>Cultivee Setup</title>"
+    "<title>Cultivee</title>"
     "<style>"
     "*{margin:0;padding:0;box-sizing:border-box}"
-    "body{font-family:-apple-system,sans-serif;background:#f0fdf4;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:1rem}"
-    ".card{background:#fff;border-radius:1rem;padding:2rem;max-width:400px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,0.08)}"
-    ".logo{text-align:center;margin-bottom:1.5rem}"
-    ".logo h1{color:#16a34a;font-size:1.5rem;margin-top:0.5rem}"
-    ".logo p{color:#666;font-size:0.85rem}"
-    ".chip-id{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:0.5rem;padding:0.75rem;text-align:center;margin:1rem 0}"
-    ".chip-id span{font-size:1.5rem;font-weight:700;color:#16a34a;letter-spacing:0.1em}"
-    ".chip-id small{display:block;color:#666;font-size:0.75rem;margin-top:0.25rem}"
-    "label{display:block;font-weight:600;margin:1rem 0 0.25rem;font-size:0.85rem;color:#333}"
-    "select,input{width:100%;padding:0.75rem;border:1px solid #ddd;border-radius:0.5rem;font-size:1rem}"
-    "select:focus,input:focus{outline:none;border-color:#16a34a}"
-    "button{width:100%;padding:0.85rem;background:#16a34a;color:#fff;border:none;border-radius:0.5rem;font-size:1rem;font-weight:600;cursor:pointer;margin-top:1.5rem}"
-    "button:hover{background:#15803d}"
-    ".msg{padding:0.75rem;border-radius:0.5rem;margin-top:1rem;text-align:center;font-size:0.85rem}"
-    ".msg.ok{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}"
-    ".msg.err{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}"
+    "body{font-family:-apple-system,sans-serif;background:#f0fdf4;min-height:100vh;padding:1rem;display:flex;justify-content:center;align-items:center}"
+    ".c{background:#fff;border-radius:1rem;padding:1.5rem;max-width:400px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,0.08)}"
+    ".hd{text-align:center;margin-bottom:1rem}"
+    ".hd h1{color:#16a34a;font-size:1.5rem}"
+    ".hd p{color:#888;font-size:0.8rem;margin-top:0.25rem}"
+    ".step{display:none}.step.on{display:block}"
+    ".net{display:flex;justify-content:space-between;align-items:center;padding:0.85rem;margin:0.3rem 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:0.5rem;cursor:pointer}"
+    ".net:hover{background:#f0fdf4;border-color:#16a34a}"
+    ".net b{font-size:0.95rem;color:#1a1a2e}"
+    ".sig{color:#16a34a;font-size:0.65rem;margin-left:0.4rem}"
+    ".lock{color:#888;font-size:0.8rem}"
+    ".title{font-size:1.1rem;font-weight:700;color:#333;margin-bottom:0.75rem;text-align:center}"
+    "input{width:100%;padding:0.75rem;border:1px solid #ddd;border-radius:0.5rem;font-size:1rem;margin-bottom:0.5rem}"
+    "input:focus{outline:none;border-color:#16a34a}"
+    ".btn{width:100%;padding:0.85rem;background:#16a34a;color:#fff;border:none;border-radius:0.5rem;font-size:1rem;font-weight:600;cursor:pointer;margin-top:0.5rem;text-decoration:none;display:block;text-align:center}"
+    ".btn:hover{background:#15803d}"
+    ".btn2{background:#fff;color:#16a34a;border:2px solid #16a34a}"
+    ".btn2:hover{background:#f0fdf4}"
+    ".pw{position:relative}.pw span{position:absolute;right:0.75rem;top:50%;transform:translateY(-50%);color:#16a34a;cursor:pointer;font-size:0.8rem;font-weight:600}"
+    ".ok{text-align:center;padding:1rem 0}"
+    ".ok .check{font-size:3rem;color:#16a34a}"
+    ".ok h2{color:#16a34a;margin:0.5rem 0}"
+    ".ok p{color:#666;font-size:0.9rem}"
+    ".nlist{max-height:300px;overflow-y:auto}"
     "</style></head><body>"
-    "<div class='card'>"
-    "<div class='logo'>"
-    "<h1>Cultivee</h1>"
-    "<p>Configuracao WiFi</p>"
+    "<div class='c'>"
+    "<div class='hd'><h1>Cultivee</h1><p>Configuracao do modulo</p></div>"
+
+    // Step 1: Selecionar rede
+    "<div class='step on' id='s1'>"
+    "<p class='title'>Selecione sua rede WiFi</p>"
+    "<div class='nlist'>" + networks + "</div>"
     "</div>"
-    "<div class='chip-id'>"
-    "<span>" + getShortId() + "</span>"
-    "<small>Codigo do modulo (anote para vincular no app)</small>"
+
+    // Step 2: Digitar senha
+    "<div class='step' id='s2'>"
+    "<p class='title'>Conectar em <span id='sn'></span></p>"
+    "<form onsubmit='return go()'>"
+    "<input type='hidden' id='ssid'>"
+    "<div id='pp'>"
+    "<div class='pw'><input type='password' id='pass' placeholder='Senha do WiFi'>"
+    "<span onclick=\"var p=document.getElementById('pass');if(p.type==='password'){p.type='text';this.textContent='Ocultar'}else{p.type='password';this.textContent='Mostrar'}\">Mostrar</span></div>"
     "</div>"
-    "<form action='/save-wifi' method='POST'>"
-    "<label>Rede WiFi</label>"
-    "<select name='ssid'>" + options + "</select>"
-    "<label>Senha</label>"
-    "<div style='position:relative'>"
-    "<input type='password' name='pass' id='pass' placeholder='Senha do WiFi'>"
-    "<span onclick=\"var p=document.getElementById('pass');var t=this;if(p.type==='password'){p.type='text';t.textContent='Ocultar'}else{p.type='password';t.textContent='Mostrar'}\" "
-    "style='position:absolute;right:0.75rem;top:50%;transform:translateY(-50%);color:#16a34a;cursor:pointer;font-size:0.8rem;font-weight:600'>Mostrar</span>"
-    "</div>"
-    "<button type='submit'>Conectar</button>"
-    "</form>"
-    "<div id='msg'></div>"
+    "<button class='btn' type='submit'>Conectar</button>"
+    "<button class='btn btn2' type='button' onclick=\"show('s1')\">Voltar</button>"
+    "</form></div>"
+
+    // Step 3: Sucesso
+    "<div class='step' id='s3'>"
+    "<div class='ok'>"
+    "<div class='check'>&#10003;</div>"
+    "<h2>Pronto!</h2>"
+    "<p>Modulo configurado com sucesso.</p>"
+    "<p style='margin:1rem 0 0.5rem;color:#333;font-weight:600'>Agora reconecte no seu WiFi e abra o app:</p>"
+    "<a class='btn' href='" + appUrl + "'>Abrir Cultivee</a>"
+    "</div></div>"
+
+    "<script>"
+    "function show(id){document.querySelectorAll('.step').forEach(s=>s.classList.remove('on'));document.getElementById(id).classList.add('on')}"
+    "function sel(s,o){document.getElementById('ssid').value=s;document.getElementById('sn').textContent=s;"
+    "document.getElementById('pp').style.display=o?'none':'block';show('s2')}"
+    "function go(){var f=new FormData();f.append('ssid',document.getElementById('ssid').value);"
+    "f.append('pass',document.getElementById('pass').value||'');"
+    "fetch('/save-wifi',{method:'POST',body:new URLSearchParams(f)}).then(()=>show('s3')).catch(()=>show('s3'));return false}"
+    "</script>"
     "</div></body></html>";
 }
 
@@ -456,41 +500,15 @@ void handleSaveWifi() {
   String pass = server.arg("pass");
 
   if (ssid.length() == 0) {
-    server.send(400, "text/html", "<h2>SSID vazio</h2><a href='/'>Voltar</a>");
+    server.send(400, "text/plain", "SSID vazio");
     return;
   }
 
   saveWiFiCredentials(ssid, pass);
+  server.send(200, "text/plain", "OK");
 
-  server.send(200, "text/html",
-    "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
-    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-    "<style>body{font-family:-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f0fdf4;padding:1rem}"
-    ".card{text-align:center;padding:2rem;background:#fff;border-radius:1rem;max-width:400px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,0.08)}"
-    "h2{color:#16a34a;font-size:1.3rem}"
-    ".check{font-size:3rem;margin-bottom:0.5rem}"
-    ".steps{text-align:left;margin:1.5rem 0;padding:0;list-style:none}"
-    ".steps li{padding:0.75rem;margin:0.5rem 0;background:#f0fdf4;border-radius:0.5rem;font-size:0.9rem;color:#333;border-left:3px solid #16a34a}"
-    ".steps li b{color:#16a34a}"
-    ".btn{display:block;width:100%;padding:0.85rem;background:#16a34a;color:#fff;border:none;border-radius:0.5rem;font-size:1rem;font-weight:600;cursor:pointer;text-decoration:none;text-align:center;margin-top:0.5rem}"
-    ".btn:hover{background:#15803d}"
-    ".btn-outline{background:transparent;border:2px solid #16a34a;color:#16a34a}"
-    ".btn-outline:hover{background:#f0fdf4}"
-    "</style></head>"
-    "<body><div class='card'>"
-    "<div class='check'>&#10003;</div>"
-    "<h2>WiFi configurado!</h2>"
-    "<p style='color:#666;margin-top:0.5rem'>Conectando em '" + ssid + "'...</p>"
-    "<ul class='steps'>"
-    "<li><b>Passo 1:</b> Reconecte seu celular ao WiFi <b>" + ssid + "</b></li>"
-    "<li><b>Passo 2:</b> Clique no botao abaixo para abrir o app e vincular automaticamente</li>"
-    "</ul>"
-    "<a class='btn' href='" + String(APP_URL) + "/?code=" + getShortId() + "'>Abrir Cultivee e vincular</a>"
-    "<p style='color:#999;font-size:0.75rem;margin-top:1.5rem'>Codigo do modulo: <b>" + getShortId() + "</b> (caso precise vincular manualmente)</p>"
-    "<script>try{localStorage.setItem('cultivee_pending_code','" + getShortId() + "')}catch(e){}</script>"
-    "</div></body></html>");
-
-  delay(2000);
+  // Aguarda resposta ser enviada, depois reinicia
+  delay(1000);
   ESP.restart();
 }
 

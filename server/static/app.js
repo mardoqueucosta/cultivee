@@ -881,7 +881,7 @@ function closeBleModal(event) {
 // PWA Install
 // =====================================================================
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 let deferredPrompt = null;
 
 // Registrar Service Worker + verificar atualizacoes
@@ -1018,19 +1018,38 @@ function showUpdateBanner(newVersion) {
 
 function doAppUpdate() {
     const banner = document.getElementById('update-banner');
-    if (banner) banner.remove();
-
-    // Forcar o novo SW a ativar
-    if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.ready.then((reg) => {
-            if (reg.waiting) {
-                reg.waiting.postMessage('SKIP_WAITING');
-            }
-        });
+    if (banner) {
+        banner.querySelector('.pwa-btn-install').textContent = 'Atualizando...';
+        banner.querySelector('.pwa-btn-install').disabled = true;
     }
 
-    // Recarregar a pagina para carregar nova versao
-    window.location.reload(true);
+    // Escutar quando o novo SW assumir o controle
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+    });
+
+    // Forcar o novo SW a ativar
+    navigator.serviceWorker.ready.then((reg) => {
+        if (reg.waiting) {
+            reg.waiting.postMessage('SKIP_WAITING');
+        } else {
+            // Se nao tem waiting, limpar caches e recarregar
+            caches.keys().then(keys => {
+                Promise.all(keys.map(k => caches.delete(k))).then(() => {
+                    window.location.reload();
+                });
+            });
+        }
+    });
+
+    // Fallback: se nada acontecer em 3s, forcar reload
+    setTimeout(() => {
+        caches.keys().then(keys => {
+            Promise.all(keys.map(k => caches.delete(k))).then(() => {
+                window.location.reload();
+            });
+        });
+    }, 3000);
 }
 
 function dismissUpdate() {

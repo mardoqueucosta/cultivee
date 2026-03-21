@@ -38,6 +38,17 @@ function showRegister() {
     document.getElementById("auth-error").classList.add("hidden");
 }
 
+function togglePass(inputId, el) {
+    const input = document.getElementById(inputId);
+    if (input.type === "password") {
+        input.type = "text";
+        el.textContent = "ocultar";
+    } else {
+        input.type = "password";
+        el.textContent = "mostrar";
+    }
+}
+
 function showAuthError(msg) {
     const el = document.getElementById("auth-error");
     el.textContent = msg;

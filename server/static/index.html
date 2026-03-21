@@ -26,14 +26,20 @@
             </div>
             <div id="auth-login">
                 <input type="email" id="login-email" placeholder="Email">
-                <input type="password" id="login-pass" placeholder="Senha">
+                <div class="pass-group">
+                    <input type="password" id="login-pass" placeholder="Senha">
+                    <span class="pass-toggle" onclick="togglePass('login-pass', this)">mostrar</span>
+                </div>
                 <button onclick="doLogin()">Entrar</button>
                 <p class="auth-switch">Nao tem conta? <a href="#" onclick="showRegister()">Criar conta</a></p>
             </div>
             <div id="auth-register" class="hidden">
                 <input type="text" id="reg-name" placeholder="Nome">
                 <input type="email" id="reg-email" placeholder="Email">
-                <input type="password" id="reg-pass" placeholder="Senha (min 6 caracteres)">
+                <div class="pass-group">
+                    <input type="password" id="reg-pass" placeholder="Senha (min 6 caracteres)">
+                    <span class="pass-toggle" onclick="togglePass('reg-pass', this)">mostrar</span>
+                </div>
                 <button onclick="doRegister()">Criar conta</button>
                 <p class="auth-switch">Ja tem conta? <a href="#" onclick="showLogin()">Entrar</a></p>
             </div>

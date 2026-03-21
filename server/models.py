@@ -142,8 +142,27 @@ def delete_token(token):
 
 # --- Modules ---
 
-def register_module(chip_id, short_id, module_type, ip=""):
+def register_module(chip_id, short_id, module_type, ip="", ssid="", rssi=0, uptime=0, free_heap=0):
     conn = get_db()
+
+    # Garante que colunas extras existem (migracao automatica)
+    try:
+        conn.execute("ALTER TABLE modules ADD COLUMN ssid TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE modules ADD COLUMN rssi INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE modules ADD COLUMN uptime INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE modules ADD COLUMN free_heap INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
     existing = conn.execute(
         "SELECT * FROM modules WHERE chip_id = ?", (chip_id,)
     ).fetchone()
@@ -152,13 +171,13 @@ def register_module(chip_id, short_id, module_type, ip=""):
 
     if existing:
         conn.execute(
-            "UPDATE modules SET ip = ?, last_seen = ? WHERE chip_id = ?",
-            (ip, now, chip_id)
+            "UPDATE modules SET ip = ?, last_seen = ?, ssid = ?, rssi = ?, uptime = ?, free_heap = ? WHERE chip_id = ?",
+            (ip, now, ssid, rssi, uptime, free_heap, chip_id)
         )
     else:
         conn.execute(
-            "INSERT INTO modules (chip_id, short_id, type, ip, last_seen) VALUES (?, ?, ?, ?, ?)",
-            (chip_id, short_id, module_type, ip, now)
+            "INSERT INTO modules (chip_id, short_id, type, ip, last_seen, ssid, rssi, uptime, free_heap) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (chip_id, short_id, module_type, ip, now, ssid, rssi, uptime, free_heap)
         )
     conn.commit()
     conn.close()
@@ -222,3 +241,32 @@ def get_module_by_chip_id(chip_id):
     ).fetchone()
     conn.close()
     return dict(module) if module else None
+
+
+def get_capture_interval(chip_id):
+    """Retorna intervalo de captura em segundos (default 60)."""
+    conn = get_db()
+    try:
+        conn.execute("ALTER TABLE modules ADD COLUMN capture_interval INTEGER DEFAULT 60")
+    except sqlite3.OperationalError:
+        pass
+    row = conn.execute(
+        "SELECT capture_interval FROM modules WHERE chip_id = ?", (chip_id,)
+    ).fetchone()
+    conn.close()
+    return row["capture_interval"] if row and row["capture_interval"] else 60
+
+
+def set_capture_interval(chip_id, interval_seconds):
+    """Define intervalo de captura em segundos."""
+    conn = get_db()
+    try:
+        conn.execute("ALTER TABLE modules ADD COLUMN capture_interval INTEGER DEFAULT 60")
+    except sqlite3.OperationalError:
+        pass
+    conn.execute(
+        "UPDATE modules SET capture_interval = ? WHERE chip_id = ?",
+        (interval_seconds, chip_id)
+    )
+    conn.commit()
+    conn.close()

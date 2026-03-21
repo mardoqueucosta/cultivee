@@ -38,6 +38,10 @@ CAPTURE_INTERVAL = int(os.environ.get("CAPTURE_INTERVAL", "60"))
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+# Inicializa banco de dados (necessario para Gunicorn que nao executa __main__)
+models.init_db()
+log.info("Banco de dados inicializado")
+
 
 # =====================================================================
 # Auth helpers
@@ -147,13 +151,42 @@ def register_module():
     short_id = data.get("short_id", "")
     module_type = data.get("type", "")
     ip = data.get("ip", "")
+    ssid = data.get("ssid", "")
+    rssi = data.get("rssi", 0)
+    uptime = data.get("uptime", 0)
+    free_heap = data.get("free_heap", 0)
 
     if not chip_id or not module_type:
         return jsonify({"error": "chip_id e type obrigatorios"}), 400
 
-    models.register_module(chip_id, short_id, module_type, ip)
-    log.info(f"Modulo registrado: {module_type} {chip_id} ({short_id}) IP={ip}")
-    return jsonify({"status": "ok"})
+    models.register_module(chip_id, short_id, module_type, ip, ssid, rssi, uptime, free_heap)
+    log.info(f"Modulo registrado: {module_type} {chip_id} ({short_id}) IP={ip} WiFi={ssid} RSSI={rssi}")
+    capture_interval = models.get_capture_interval(chip_id)
+    return jsonify({"status": "ok", "capture_interval": capture_interval})
+
+
+@app.route("/api/modules/config", methods=["POST"])
+@require_auth
+def set_module_config():
+    """Usuario altera configuracoes do modulo."""
+    data = request.get_json()
+    chip_id = data.get("chip_id", "")
+    capture_interval = data.get("capture_interval")
+
+    if not chip_id:
+        return jsonify({"error": "chip_id obrigatorio"}), 400
+
+    # Verifica se o modulo pertence ao usuario
+    module = models.get_module_by_chip_id(chip_id)
+    if not module or module.get("user_id") != request.user["id"]:
+        return jsonify({"error": "Modulo nao encontrado ou sem permissao"}), 403
+
+    if capture_interval is not None:
+        capture_interval = max(10, min(86400, int(capture_interval)))  # 10s a 24h
+        models.set_capture_interval(chip_id, capture_interval)
+        log.info(f"Intervalo de captura alterado: {chip_id} -> {capture_interval}s")
+
+    return jsonify({"status": "ok", "capture_interval": capture_interval})
 
 
 @app.route("/api/modules/pair", methods=["POST"])
@@ -200,6 +233,7 @@ def list_modules():
             m["online"] = (now - last).total_seconds() < 120
         else:
             m["online"] = False
+        m["capture_interval"] = models.get_capture_interval(m["chip_id"])
 
     return jsonify({"modules": modules})
 
@@ -273,29 +307,106 @@ def delete_image(filename):
 
 
 # =====================================================================
+# Upload (push from ESP32)
+# =====================================================================
+
+@app.route("/api/modules/live", methods=["POST"])
+def live_frame():
+    """ESP32 envia frame ao vivo (sobrescreve, nao salva historico)."""
+    chip_id = request.args.get("chip_id", "")
+    if not chip_id:
+        return jsonify({"error": "chip_id obrigatorio"}), 400
+
+    img_data = request.get_data()
+    if not img_data or len(img_data) < 100:
+        return "", 204
+
+    latest_dir = DATA_DIR / "live"
+    latest_dir.mkdir(parents=True, exist_ok=True)
+    (latest_dir / f"{chip_id}.jpg").write_bytes(img_data)
+
+    # Atualiza last_seen
+    conn = models.get_db()
+    conn.execute(
+        "UPDATE modules SET last_seen = ? WHERE chip_id = ?",
+        (datetime.now().isoformat(), chip_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return "", 204
+
+
+@app.route("/api/modules/upload", methods=["POST"])
+def upload_image():
+    """ESP32 envia imagem para salvar no historico."""
+    chip_id = request.form.get("chip_id", "") or request.args.get("chip_id", "")
+    if not chip_id:
+        return jsonify({"error": "chip_id obrigatorio"}), 400
+
+    module = models.get_module_by_chip_id(chip_id)
+    if not module:
+        return jsonify({"error": "Modulo nao registrado"}), 404
+
+    if not module.get("user_id"):
+        return jsonify({"error": "Modulo nao pareado"}), 400
+
+    # Aceita imagem via file upload ou raw body
+    if "image" in request.files:
+        img_data = request.files["image"].read()
+    else:
+        img_data = request.get_data()
+
+    if not img_data or len(img_data) < 100:
+        return jsonify({"error": "Imagem vazia ou invalida"}), 400
+
+    user_dir = get_user_image_dir(module["user_id"])
+    today = datetime.now().strftime("%Y-%m-%d")
+    save_dir = user_dir / today
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%H-%M-%S")
+    filepath = save_dir / f"{timestamp}.jpg"
+    filepath.write_bytes(img_data)
+
+    # Atualiza last_seen e IP
+    ip = request.remote_addr or ""
+    conn = models.get_db()
+    conn.execute(
+        "UPDATE modules SET last_seen = ?, ip = ? WHERE chip_id = ?",
+        (datetime.now().isoformat(), ip, chip_id)
+    )
+    conn.commit()
+    conn.close()
+
+    size_kb = len(img_data) / 1024
+    log.info(f"Upload [{module.get('short_id', chip_id)}]: {today}/{timestamp}.jpg ({size_kb:.1f} KB)")
+    return jsonify({"status": "ok", "file": f"{today}/{timestamp}.jpg", "size_kb": round(size_kb, 1)})
+
+
+# =====================================================================
 # Live proxy
 # =====================================================================
 
 @app.route("/api/live/<chip_id>")
 @require_auth
 def proxy_live(chip_id):
-    """Proxy da imagem live de um modulo cam do usuario."""
+    """Serve a ultima imagem enviada pelo modulo (push)."""
     module = models.get_module_by_chip_id(chip_id)
     if not module or module.get("user_id") != request.user["id"]:
         return jsonify({"error": "Modulo nao encontrado"}), 404
     if module.get("type") != "cam":
         return jsonify({"error": "Modulo nao e camera"}), 400
 
-    try:
-        resp = urllib.request.urlopen(f"http://{module['ip']}/live.jpg", timeout=5)
-        data = resp.read()
-        return Response(
-            data,
-            mimetype="image/jpeg",
-            headers={"Cache-Control": "no-cache, no-store"},
-        )
-    except Exception:
-        return jsonify({"error": "Camera indisponivel"}), 503
+    latest = DATA_DIR / "live" / f"{chip_id}.jpg"
+    if not latest.exists():
+        return jsonify({"error": "Nenhuma imagem disponivel"}), 404
+
+    return Response(
+        latest.read_bytes(),
+        mimetype="image/jpeg",
+        headers={"Cache-Control": "no-cache, no-store"},
+    )
 
 
 # =====================================================================

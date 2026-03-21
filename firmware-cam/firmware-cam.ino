@@ -4,6 +4,7 @@
   Endpoints: /capture, /live.jpg, /status, /reset-wifi
 */
 
+#include "config.h"
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <WebServer.h>
@@ -11,6 +12,12 @@
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
+#if USE_HTTPS
+#include <WiFiClientSecure.h>
+#endif
+#if BLE_SETUP_ENABLED
+#include "ble_setup.h"  // NimBLE - leve, cabe no ESP32-CAM
+#endif
 
 // --- Pinos ESP32-CAM AI-Thinker ---
 #define PWDN_GPIO_NUM     32
@@ -32,8 +39,10 @@
 
 #define LED_BUILTIN       33
 #define FLASH_LED          4
+#define RESET_BTN         13        // Botao externo de reset WiFi (GPIO13 -> GND)
 #define RESET_COUNT_KEY   "rst_cnt"  // Contador de resets rapidos
 #define RESET_WINDOW      8000      // Janela de 8s entre resets
+#define RESET_HOLD_TIME   3000      // Segurar 3s para resetar WiFi
 
 // --- Configuracao ---
 #define AP_SETUP_SSID     "Cultivee-Setup"
@@ -43,8 +52,10 @@
 #define MDNS_NAME         "cultivee-cam"
 #define MODULE_TYPE       "cam"
 #define WIFI_TIMEOUT      15000
-#define SERVER_URL        "http://192.168.137.45:5000"  // Servidor Cultivee
+// SERVER_URL definido em config.h
 #define REGISTER_INTERVAL 30000  // Registra a cada 30s
+unsigned long uploadInterval = 60000;  // Salva imagem (default 60s, ajustavel pelo app)
+#define LIVE_INTERVAL     3000   // Envia frame ao vivo a cada 3s
 #define DNS_PORT          53
 
 // --- Estado ---
@@ -83,6 +94,53 @@ void blinkLed(int times, int ms) {
   }
 }
 
+// --- LED Status ---
+unsigned long lastLedToggle = 0;
+bool ledState = false;
+
+void updateStatusLed() {
+  unsigned long now = millis();
+
+  switch (currentMode) {
+    case MODE_SETUP:
+      // Pisca rapido: 250ms (2x por segundo)
+      if (now - lastLedToggle >= 250) {
+        lastLedToggle = now;
+        ledState = !ledState;
+        digitalWrite(LED_BUILTIN, ledState ? HIGH : LOW);
+      }
+      break;
+
+    case MODE_CONNECTED:
+      // Aceso fixo nos primeiros 3s, depois apaga
+      if (now < 5000) {
+        digitalWrite(LED_BUILTIN, LOW);  // ON
+      } else {
+        // Pisca curto a cada 5s (heartbeat)
+        if (now - lastLedToggle >= 5000) {
+          lastLedToggle = now;
+          digitalWrite(LED_BUILTIN, LOW);  // ON
+        } else if (now - lastLedToggle >= 100) {
+          digitalWrite(LED_BUILTIN, HIGH); // OFF
+        }
+      }
+      break;
+
+    case MODE_AP_OFFLINE:
+      // 3 piscas rapidas, pausa 1s, repete
+      {
+        unsigned long cycle = now % 2000;  // ciclo de 2s
+        if (cycle < 100)       digitalWrite(LED_BUILTIN, LOW);
+        else if (cycle < 200)  digitalWrite(LED_BUILTIN, HIGH);
+        else if (cycle < 300)  digitalWrite(LED_BUILTIN, LOW);
+        else if (cycle < 400)  digitalWrite(LED_BUILTIN, HIGH);
+        else if (cycle < 500)  digitalWrite(LED_BUILTIN, LOW);
+        else                   digitalWrite(LED_BUILTIN, HIGH);
+      }
+      break;
+  }
+}
+
 // =====================================================================
 // Camera
 // =====================================================================
@@ -109,9 +167,9 @@ bool initCamera() {
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_UXGA;
-  config.jpeg_quality = 10;
-  config.fb_count = 2;
+  config.frame_size = FRAMESIZE_VGA;    // 640x480 fixo (estavel, bom para WiFi fraco)
+  config.jpeg_quality = 12;              // Equilibrio qualidade/tamanho
+  config.fb_count = 1;                   // 1 buffer = menos RAM, mais estavel
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
@@ -124,12 +182,13 @@ bool initCamera() {
   s->set_hmirror(s, 1);
   s->set_whitebal(s, 1);
   s->set_awb_gain(s, 1);
-  s->set_wb_mode(s, 0);
+  s->set_wb_mode(s, 1);                 // 1=Sunny (corrige tom verde do clone)
   s->set_exposure_ctrl(s, 1);
   s->set_aec2(s, 1);
   s->set_gain_ctrl(s, 1);
   s->set_raw_gma(s, 1);
   s->set_lenc(s, 1);
+  s->set_saturation(s, -1);             // Reduz saturacao (mitiga verde/rosa)
 
   // Descarta primeiros frames
   for (int i = 0; i < 5; i++) {
@@ -439,6 +498,7 @@ void setup() {
   digitalWrite(LED_BUILTIN, HIGH);  // LED off (inverted)
   pinMode(FLASH_LED, OUTPUT);
   digitalWrite(FLASH_LED, LOW);
+  pinMode(RESET_BTN, INPUT_PULLUP);  // Botao externo: GPIO13 -> GND
 
   // Triple-reset: conta quantas vezes reiniciou rapido
   prefs.begin("cultivee", false);
@@ -458,28 +518,95 @@ void setup() {
   Serial.printf("Short ID: %s\n", getShortId().c_str());
 
   // Inicializa camera
-  if (!initCamera()) {
-    Serial.println("ERRO: Camera nao inicializou!");
+  bool cameraOk = initCamera();
+  if (!cameraOk) {
+    Serial.println("AVISO: Camera nao inicializou! Continuando sem camera...");
     blinkLed(10, 100);
-    return;
   }
+
+  // Configura rotas HTTP (server.begin() sera chamado DEPOIS do WiFi iniciar)
+  server.on("/", handleRoot);
+  server.on("/capture", handleCapture);
+  server.on("/live.jpg", handleLive);
+  server.on("/status", handleStatus);
+  server.on("/save-wifi", HTTP_POST, handleSaveWifi);
+  server.on("/reset-wifi", handleResetWifi);
+  server.onNotFound(handleNotFound);
 
   // Carrega credenciais WiFi
   loadWiFiCredentials();
 
   if (savedSSID.length() == 0) {
-    // MODO 1: Setup
+#if BLE_SETUP_ENABLED
+    // MODO BLE: Aguarda credenciais via Bluetooth (camera desligada)
+    Serial.println("Modo: BLE SETUP (aguardando credenciais via Bluetooth)");
+    currentMode = MODE_SETUP;
+    startBleSetup(getShortId());
+
+    // Tambem inicia AP como fallback
+    startAP(AP_SETUP_SSID, "");
+    dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
+    server.begin();
+
+    // Aguarda credenciais via BLE (loop com LED piscando)
+    unsigned long bleStart = millis();
+    while (!bleHasCredentials()) {
+      updateStatusLed();
+      delay(50);
+
+      // Tambem processa requisicoes HTTP (fallback WiFi Manager)
+      dnsServer.processNextRequest();
+      server.handleClient();
+
+      // Verifica se recebeu credenciais pelo WiFi Manager
+      if (savedSSID.length() > 0) {
+        Serial.println("BLE: Credenciais recebidas via WiFi Manager (fallback)");
+        stopBle();
+        break;
+      }
+
+      // Timeout de 5 minutos — reinicia
+      if (millis() - bleStart > 300000) {
+        Serial.println("BLE: Timeout 5min, reiniciando...");
+        ESP.restart();
+      }
+    }
+
+    // Se recebeu via BLE
+    if (bleHasCredentials()) {
+      String bSsid, bPass;
+      bleGetCredentials(bSsid, bPass);
+      Serial.printf("BLE: Conectando em '%s'...\n", bSsid.c_str());
+
+      // Salva credenciais
+      savedSSID = bSsid;
+      savedPass = bPass;
+      saveWiFiCredentials(bSsid, bPass);
+
+      // Desliga BLE antes de iniciar camera
+      stopBle();
+
+      // Reinicia para iniciar com WiFi + Camera
+      Serial.println("BLE: Credenciais salvas, reiniciando...");
+      delay(1000);
+      ESP.restart();
+    }
+#else
+    // MODO 1: Setup (sem BLE)
     currentMode = MODE_SETUP;
     Serial.println("Modo: SETUP");
     startAP(AP_SETUP_SSID, "");  // Rede aberta no setup
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());  // Portal cativo
+    server.begin();
     blinkLed(3, 200);
+#endif
   } else if (connectWiFi()) {
     // MODO 2: Conectado
     currentMode = MODE_CONNECTED;
     Serial.println("Modo: CONECTADO");
     MDNS.begin(MDNS_NAME);
     MDNS.addService("cultivee", "tcp", 80);
+    server.begin();
     blinkLed(1, 500);
   } else {
     // MODO 3: WiFi falhou — volta para Setup automaticamente
@@ -488,18 +615,9 @@ void setup() {
     clearWiFiCredentials();  // Limpa WiFi que nao funciona
     startAP(AP_SETUP_SSID, "");  // Rede aberta
     dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
+    server.begin();
     blinkLed(5, 100);
   }
-
-  // Rotas
-  server.on("/", handleRoot);
-  server.on("/capture", handleCapture);
-  server.on("/live.jpg", handleLive);
-  server.on("/status", handleStatus);
-  server.on("/save-wifi", HTTP_POST, handleSaveWifi);
-  server.on("/reset-wifi", handleResetWifi);
-  server.onNotFound(handleNotFound);
-  server.begin();
 
   Serial.println("Servidor pronto!");
 }
@@ -509,16 +627,77 @@ void setup() {
 // =====================================================================
 
 unsigned long lastRegister = 0;
+unsigned long lastUpload = 0;
+unsigned long lastLive = 0;
+
+void sendLiveFrame() {
+  if (currentMode != MODE_CONNECTED) return;
+  if (millis() - lastLive < LIVE_INTERVAL) return;
+  lastLive = millis();
+
+  // Live: usa resolucao atual (sem trocar, evita corrupcao)
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb) return;
+
+  WiFiClient client;
+  HTTPClient http;
+  http.setTimeout(5000);
+
+  String url = String(SERVER_URL) + "/api/modules/live?chip_id=" + chipId;
+  http.begin(client, url);
+  http.addHeader("Content-Type", "image/jpeg");
+  http.POST(fb->buf, fb->len);
+  http.end();
+  esp_camera_fb_return(fb);
+}
+
+void uploadImageToServer() {
+  if (currentMode != MODE_CONNECTED) return;
+  if (millis() - lastUpload < uploadInterval) return;
+  lastUpload = millis();
+
+  // Captura: usa resolucao atual (sem trocar, evita corrupcao)
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb) {
+    Serial.println("Upload: falha ao capturar");
+    return;
+  }
+
+  Serial.printf("Upload: %d bytes UXGA, enviando...\n", fb->len);
+
+  WiFiClient client;
+  HTTPClient http;
+  http.setTimeout(30000);  // 30s para imagem grande
+
+  String url = String(SERVER_URL) + "/api/modules/upload?chip_id=" + chipId;
+  http.begin(client, url);
+  http.addHeader("Content-Type", "image/jpeg");
+
+  int code = http.POST(fb->buf, fb->len);
+  if (code == 200) {
+    Serial.printf("Upload OK: %d bytes\n", fb->len);
+  } else {
+    String resp = http.getString();
+    Serial.printf("Upload falhou: HTTP %d - %s\n", code, resp.c_str());
+  }
+  http.end();
+  esp_camera_fb_return(fb);
+}
 
 void registerOnServer() {
   if (currentMode != MODE_CONNECTED) return;
   if (millis() - lastRegister < REGISTER_INTERVAL) return;
   lastRegister = millis();
 
-  WiFiClient client;
   HTTPClient http;
-
   String url = String(SERVER_URL) + "/api/modules/register";
+
+#if USE_HTTPS
+  WiFiClientSecure client;
+  client.setInsecure();
+#else
+  WiFiClient client;
+#endif
   http.begin(client, url);
   http.addHeader("Content-Type", "application/json");
 
@@ -526,11 +705,30 @@ void registerOnServer() {
   body += "\"chip_id\":\"" + chipId + "\",";
   body += "\"short_id\":\"" + getShortId() + "\",";
   body += "\"type\":\"" + String(MODULE_TYPE) + "\",";
-  body += "\"ip\":\"" + WiFi.localIP().toString() + "\"";
+  body += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+  body += "\"ssid\":\"" + WiFi.SSID() + "\",";
+  body += "\"rssi\":" + String(WiFi.RSSI()) + ",";
+  body += "\"uptime\":" + String(millis() / 1000) + ",";
+  body += "\"free_heap\":" + String(ESP.getFreeHeap());
   body += "}";
 
   int code = http.POST(body);
   if (code == 200) {
+    String resp = http.getString();
+    // Extrai capture_interval da resposta JSON
+    int idx = resp.indexOf("\"capture_interval\":");
+    if (idx > 0) {
+      int start = idx + 19;  // comprimento de "capture_interval":
+      int end = start;
+      while (end < (int)resp.length() && resp.charAt(end) >= '0' && resp.charAt(end) <= '9') end++;
+      if (end > start) {
+        unsigned long newInterval = resp.substring(start, end).toInt() * 1000UL;
+        if (newInterval >= 10000 && newInterval != uploadInterval) {
+          Serial.printf("Intervalo de captura alterado: %lus -> %lus\n", uploadInterval / 1000, newInterval / 1000);
+          uploadInterval = newInterval;
+        }
+      }
+    }
     Serial.println("Registro OK no servidor");
   } else {
     Serial.printf("Registro falhou: %d\n", code);
@@ -538,10 +736,51 @@ void registerOnServer() {
   http.end();
 }
 
+// Verifica botao de reset WiFi (GPIO13)
+void checkResetButton() {
+  static unsigned long pressStart = 0;
+  static bool wasPressed = false;
+
+  if (digitalRead(RESET_BTN) == LOW) {  // Botao pressionado (ativo LOW)
+    if (!wasPressed) {
+      pressStart = millis();
+      wasPressed = true;
+      Serial.println("Botao pressionado...");
+    }
+    // Feedback visual: LED pisca enquanto segura
+    if (millis() - pressStart > 1000) {
+      digitalWrite(FLASH_LED, (millis() / 200) % 2);  // Pisca rapido
+    }
+    // Se segurou por 3 segundos
+    if (millis() - pressStart >= RESET_HOLD_TIME) {
+      Serial.println(">>> RESET WiFi via botao! <<<");
+      digitalWrite(FLASH_LED, HIGH);  // LED aceso confirmando
+      delay(500);
+      digitalWrite(FLASH_LED, LOW);
+      delay(200);
+      digitalWrite(FLASH_LED, HIGH);
+      delay(500);
+      digitalWrite(FLASH_LED, LOW);
+      // Limpa credenciais e reinicia
+      clearWiFiCredentials();
+      ESP.restart();
+    }
+  } else {
+    if (wasPressed) {
+      digitalWrite(FLASH_LED, LOW);  // Apaga LED se soltou antes dos 3s
+    }
+    wasPressed = false;
+  }
+}
+
 void loop() {
+  checkResetButton();
   if (currentMode == MODE_SETUP) {
     dnsServer.processNextRequest();  // Portal cativo
   }
   server.handleClient();
+  updateStatusLed();
   registerOnServer();
+  sendLiveFrame();
+  uploadImageToServer();
 }

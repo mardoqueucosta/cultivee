@@ -495,6 +495,80 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; display: flex; flex-d
     background: #fef2f2;
 }
 
+/* Module bar (compact) */
+.module-bar {
+    padding: 0.5rem 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.module-compact {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.module-compact:hover { border-color: var(--green); }
+
+.module-compact-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.module-compact-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.module-compact-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #1a1a2e;
+}
+
+.module-compact-meta {
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.module-compact-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.module-chevron {
+    color: #999;
+    transition: transform 0.2s;
+}
+
+.module-details {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f0f0f0;
+}
+
+.module-compact-offline {
+    cursor: default;
+    border-style: dashed;
+}
+
+.btn-setup-small {
+    padding: 0.4rem 0.75rem;
+    background: var(--green);
+    color: #fff;
+    border-radius: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+.btn-setup-small:hover { background: var(--green-dark); }
+
 /* Setup link button */
 .btn-setup-link {
     display: block;

@@ -209,94 +209,96 @@ function renderModules() {
     const list = document.getElementById("modules-list");
 
     if (modules.length === 0) {
-        list.innerHTML = '<div class="empty-state"><p>Nenhum modulo vinculado. Clique em "+ Adicionar".</p></div>';
+        list.innerHTML = '<div class="empty-state"><p>Nenhum modulo vinculado.</p><button class="btn-add" onclick="showPairModal()" style="margin-top:0.5rem">+ Adicionar modulo</button></div>';
         return;
     }
 
     list.innerHTML = modules.map(m => {
         const icon = m.type === "cam"
-            ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>'
-            : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
+            ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>'
+            : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>';
         const name = m.name || m.type.toUpperCase();
 
         if (m.online) {
-            // --- ONLINE: mostra status detalhado ---
             const rssiBar = getRssiBar(m.rssi);
-            const uptimeStr = formatUptime(m.uptime);
             const rssiLabel = getRssiLabel(m.rssi);
-
-            const intervalLabel = formatInterval(m.capture_interval || 60);
-
-            return `<div class="module-item module-online">
-                <div class="module-header">
-                    <div class="module-info">
-                        <span class="module-icon-wrap online">${icon}</span>
-                        <div>
-                            <div class="module-name">${name}</div>
-                            <div class="module-meta"><span class="status-dot online"></span> Online &middot; ${m.short_id}</div>
-                        </div>
+            // --- ONLINE: card compacto + detalhes expansiveis ---
+            return `<div class="module-compact" onclick="toggleModuleDetails('${m.chip_id}')">
+                <div class="module-compact-row">
+                    <div class="module-compact-info">
+                        <span class="status-dot online"></span>
+                        <span class="module-compact-name">${name}</span>
+                        <span class="module-compact-meta">${m.ssid || ''} ${rssiBar}</span>
+                    </div>
+                    <div class="module-compact-actions">
+                        <button class="btn-add" onclick="showPairModal();event.stopPropagation()">+</button>
+                        <svg class="module-chevron" id="chevron-${m.chip_id}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </div>
                 </div>
-                <div class="module-stats">
-                    <div class="stat-item">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
-                        <div class="stat-content">
-                            <span class="stat-value">${m.ssid || '---'}</span>
-                            <span class="stat-label">${rssiBar} ${rssiLabel}</span>
+                <div class="module-details hidden" id="details-${m.chip_id}" onclick="event.stopPropagation()">
+                    <div class="module-stats">
+                        <div class="stat-item">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+                            <div class="stat-content">
+                                <span class="stat-value">${m.ssid || '---'}</span>
+                                <span class="stat-label">${rssiBar} ${rssiLabel}</span>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <div class="stat-content">
+                                <span class="stat-value">${formatUptime(m.uptime)}</span>
+                                <span class="stat-label">Ligado</span>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+                            <div class="stat-content">
+                                <span class="stat-value">${m.ip || '---'}</span>
+                                <span class="stat-label">IP Local</span>
+                            </div>
                         </div>
                     </div>
-                    <div class="stat-item">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        <div class="stat-content">
-                            <span class="stat-value">${uptimeStr}</span>
-                            <span class="stat-label">Ligado</span>
+                    <div class="module-config">
+                        <div class="config-item">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                            <span class="config-label">Capturar a cada:</span>
+                            <select class="config-select" onchange="setCaptureInterval('${m.chip_id}', this.value)">
+                                <option value="10" ${m.capture_interval == 10 ? 'selected' : ''}>10s</option>
+                                <option value="30" ${m.capture_interval == 30 ? 'selected' : ''}>30s</option>
+                                <option value="60" ${m.capture_interval == 60 || !m.capture_interval ? 'selected' : ''}>1 min</option>
+                                <option value="300" ${m.capture_interval == 300 ? 'selected' : ''}>5 min</option>
+                                <option value="600" ${m.capture_interval == 600 ? 'selected' : ''}>10 min</option>
+                                <option value="1800" ${m.capture_interval == 1800 ? 'selected' : ''}>30 min</option>
+                                <option value="3600" ${m.capture_interval == 3600 ? 'selected' : ''}>1 hora</option>
+                            </select>
                         </div>
-                    </div>
-                    <div class="stat-item">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
-                        <div class="stat-content">
-                            <span class="stat-value">${m.ip || '---'}</span>
-                            <span class="stat-label">IP Local</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="module-config">
-                    <div class="config-item">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-                        <span class="config-label">Capturar a cada:</span>
-                        <select class="config-select" onchange="setCaptureInterval('${m.chip_id}', this.value)">
-                            <option value="10" ${m.capture_interval == 10 ? 'selected' : ''}>10s</option>
-                            <option value="30" ${m.capture_interval == 30 ? 'selected' : ''}>30s</option>
-                            <option value="60" ${m.capture_interval == 60 || !m.capture_interval ? 'selected' : ''}>1 min</option>
-                            <option value="300" ${m.capture_interval == 300 ? 'selected' : ''}>5 min</option>
-                            <option value="600" ${m.capture_interval == 600 ? 'selected' : ''}>10 min</option>
-                            <option value="1800" ${m.capture_interval == 1800 ? 'selected' : ''}>30 min</option>
-                            <option value="3600" ${m.capture_interval == 3600 ? 'selected' : ''}>1 hora</option>
-                        </select>
                     </div>
                 </div>
             </div>`;
         } else {
-            // --- OFFLINE: mostra guia simples ---
-            return `<div class="module-item module-offline">
-                <div class="module-header">
-                    <div class="module-info">
-                        <span class="module-icon-wrap offline">${icon}</span>
-                        <div>
-                            <div class="module-name">${name}</div>
-                            <div class="module-meta"><span class="status-dot offline"></span> Offline &middot; ${m.short_id}</div>
-                        </div>
+            // --- OFFLINE: card compacto com botao de setup ---
+            return `<div class="module-compact module-compact-offline">
+                <div class="module-compact-row">
+                    <div class="module-compact-info">
+                        <span class="status-dot offline"></span>
+                        <span class="module-compact-name">${name}</span>
+                        <span class="module-compact-meta" style="color:#999">Offline</span>
                     </div>
-                </div>
-                <div class="module-help">
-                    <p class="help-title">Modulo desconectado</p>
-                    <p style="color:#666;font-size:0.85rem;margin:0.5rem 0">Conecte no WiFi <strong>Cultivee-Setup</strong> (sem senha) e toque no botao abaixo:</p>
-                    <a href="http://192.168.4.1" target="_blank" class="btn-setup-link">Configurar WiFi do modulo</a>
-                    <p style="color:#999;font-size:0.75rem;margin-top:0.75rem;text-align:center">Se o modulo ja esta configurado, aguarde ele ficar online.</p>
+                    <a href="http://192.168.4.1" target="_blank" class="btn-setup-small" onclick="event.stopPropagation()">Configurar</a>
                 </div>
             </div>`;
         }
     }).join("");
+}
+
+function toggleModuleDetails(chipId) {
+    const details = document.getElementById("details-" + chipId);
+    const chevron = document.getElementById("chevron-" + chipId);
+    if (details) {
+        details.classList.toggle("hidden");
+        if (chevron) chevron.style.transform = details.classList.contains("hidden") ? "" : "rotate(180deg)";
+    }
 }
 
 async function toggleGpio(chipId, gpioName) {
@@ -739,7 +741,7 @@ function closeBleModal(event) {
 // PWA Install
 // =====================================================================
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 let deferredPrompt = null;
 
 // Registrar Service Worker + verificar atualizacoes

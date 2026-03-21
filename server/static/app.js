@@ -741,7 +741,7 @@ function closeBleModal(event) {
 // PWA Install
 // =====================================================================
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 let deferredPrompt = null;
 
 // Registrar Service Worker + verificar atualizacoes

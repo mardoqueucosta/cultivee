@@ -15,17 +15,36 @@ Monorepo com 4 componentes:
 ## Deploy
 O deploy é feito no VPS HostGator (129.121.50.168) via Docker + Traefik.
 
+**IMPORTANTE:** O `docker-compose.yml` no repositório é a fonte da verdade.
+Nunca editar o docker-compose.yml diretamente no servidor — sempre editar no repo e fazer deploy.
+
 Quando o usuário pedir "faça o deploy" ou "deploy":
-1. `git add .` (exceto .env, node_modules, data/, *.db)
+1. `git add` arquivos alterados
 2. `git commit` com mensagem descritiva
 3. `git push origin main`
-4. Conectar via SSH e rebuild:
+4. Executar o script de deploy:
    ```bash
-   ssh -i "D:/01-projetos-claude/id_rsa" -p 22022 root@129.121.50.168
-   cd /opt/sites/cultivee
-   # Enviar arquivos atualizados via tar/scp
-   docker compose up -d --build
+   bash D:/01-projetos-claude/cultivee/deploy.sh          # deploy completo
+   bash D:/01-projetos-claude/cultivee/deploy.sh server    # só o server/app
+   bash D:/01-projetos-claude/cultivee/deploy.sh site      # só o site
    ```
+
+O script deploy.sh:
+- Sempre envia o docker-compose.yml atualizado (evita inconsistências)
+- Empacota os arquivos (excluindo node_modules, dist, data, *.db)
+- Envia via SCP e extrai no servidor
+- Reconstroi containers Docker
+- Verifica saúde dos containers
+
+### Configuração Docker (NÃO alterar sem atualizar o repo)
+- `DB_PATH=/app/data/cultivee.db` (dentro do volume cultivee-data)
+- `DATA_DIR=/app/data/images` (dentro do volume cultivee-data)
+- Volume `cultivee-data` montado em `/app/data` (persiste DB + imagens)
+
+## SSH
+```bash
+ssh -i "D:/01-projetos-claude/id_rsa" -p 22022 root@129.121.50.168
+```
 
 ## Git Config (este repo)
 - user.name: Mardoqueu Costa
@@ -38,8 +57,17 @@ Quando o usuário pedir "faça o deploy" ou "deploy":
 - **SSL app:** Let's Encrypt via Traefik
 
 ## Arquitetura IoT
-- ESP32-CAM captura imagens, serve via HTTP
-- Servidor puxa imagens do ESP32 (pull architecture)
+- ESP32-CAM envia imagens para o servidor (push architecture)
+- Live: frame cada 3s (VGA, sem salvar, sobrescreve latest.jpg)
+- Captura: imagem a cada N segundos (configurável no app, salva no histórico)
 - WiFi Manager com portal cativo para setup
 - Multi-usuario com pareamento por chip_id (MAC)
 - Auto-registro do ESP32 no servidor a cada 30s
+- Botão reset WiFi no GPIO13 (pressionar 3s)
+
+## Ambiente local vs produção
+- `firmware-cam/config.h`: define SERVER_URL e APP_URL
+- Para testar localmente: `#define ENV_LOCAL`
+- Para produção: `#define ENV_PRODUCTION`
+- APP_URL (link para o usuário) é sempre app.cultivee.com.br
+- SERVER_URL muda conforme ambiente (localhost vs app.cultivee.com.br)

@@ -22,11 +22,9 @@ services:
     restart: unless-stopped
     environment:
       - DATA_DIR=/app/data/images
-      - DB_PATH=/app/cultivee.db
-      - CAPTURE_INTERVAL=60
+      - DB_PATH=/app/data/cultivee.db
     volumes:
       - cultivee-data:/app/data
-      - cultivee-db:/app/cultivee.db
     networks:
       - web
     labels:
@@ -38,7 +36,6 @@ services:
 
 volumes:
   cultivee-data:
-  cultivee-db:
 
 networks:
   web:

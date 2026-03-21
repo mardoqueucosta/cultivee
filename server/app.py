@@ -523,6 +523,14 @@ def capture_thread():
 def dashboard():
     return send_from_directory("static", "index.html")
 
+@app.route("/sw.js")
+def service_worker():
+    """Service Worker precisa ser servido na raiz para escopo correto"""
+    response = send_from_directory("static", "sw.js")
+    response.headers['Service-Worker-Allowed'] = '/'
+    response.headers['Content-Type'] = 'application/javascript'
+    return response
+
 
 # =====================================================================
 # Main

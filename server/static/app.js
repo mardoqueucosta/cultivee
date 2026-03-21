@@ -747,3 +747,73 @@ function closeBleModal(event) {
     bleDevice = null;
     bleChars = {};
 }
+
+// =====================================================================
+// PWA Install
+// =====================================================================
+
+let deferredPrompt = null;
+
+// Registrar Service Worker
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('SW registrado:', reg.scope))
+        .catch(err => console.log('SW erro:', err));
+}
+
+// Capturar evento de instalacao
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    // Verificar se ja foi dispensado recentemente
+    const dismissed = localStorage.getItem('pwa_dismissed');
+    if (dismissed) {
+        const dismissedTime = parseInt(dismissed);
+        // Mostra novamente apos 7 dias
+        if (Date.now() - dismissedTime < 7 * 24 * 60 * 60 * 1000) return;
+    }
+    showPwaBanner();
+});
+
+// Verificar se ja esta instalado
+window.addEventListener('appinstalled', () => {
+    console.log('Cultivee instalado!');
+    hidePwaBanner();
+    deferredPrompt = null;
+});
+
+function showPwaBanner() {
+    const banner = document.getElementById('pwa-banner');
+    if (banner) banner.classList.remove('hidden');
+}
+
+function hidePwaBanner() {
+    const banner = document.getElementById('pwa-banner');
+    if (banner) banner.classList.add('hidden');
+}
+
+function pwaInstall() {
+    if (!deferredPrompt) {
+        // Fallback: mostrar instrucoes manuais
+        const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+        if (isIOS) {
+            alert('Para instalar:\n1. Toque no botao de compartilhar (quadrado com seta)\n2. Selecione "Adicionar a Tela de Inicio"');
+        } else {
+            alert('Para instalar:\n1. Abra o menu do navegador (3 pontos)\n2. Selecione "Instalar aplicativo" ou "Adicionar a tela inicial"');
+        }
+        return;
+    }
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((result) => {
+        if (result.outcome === 'accepted') {
+            console.log('PWA instalada!');
+        }
+        deferredPrompt = null;
+        hidePwaBanner();
+    });
+}
+
+function pwaDismiss() {
+    hidePwaBanner();
+    localStorage.setItem('pwa_dismissed', Date.now().toString());
+}

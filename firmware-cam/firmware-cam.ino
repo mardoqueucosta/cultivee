@@ -477,18 +477,42 @@ void handleStatus() {
 }
 
 // Endpoints de deteccao de portal cativo
-// Android, iOS, Windows e macOS fazem requests especificos
-void handleCaptiveDetect() {
-  Serial.println("Portal cativo detectado -> redirect");
+// Cada SO/navegador usa um endpoint e espera uma resposta diferente
+void handleCaptiveAndroid() {
+  // Android espera status 204 para "sem portal" ou qualquer outra coisa para "tem portal"
+  // Retornando 302 redirect faz o Android abrir o mini-browser de portal
+  Serial.println("Portal cativo: Android detectado");
   server.sendHeader("Location", "http://192.168.4.1/");
-  server.send(302, "text/html", "");
+  server.send(302, "text/html", "<html><body><a href='http://192.168.4.1/'>Configurar WiFi</a></body></html>");
+}
+
+void handleCaptiveApple() {
+  // Apple espera HTML com conteudo - se nao for "<HTML><HEAD><TITLE>Success</TITLE>..." abre portal
+  Serial.println("Portal cativo: Apple detectado");
+  server.sendHeader("Location", "http://192.168.4.1/");
+  server.send(302, "text/html", "<HTML><HEAD><TITLE>Cultivee</TITLE></HEAD><BODY>Redirecionando...</BODY></HTML>");
+}
+
+void handleCaptiveWindows() {
+  // Windows NCSI espera "Microsoft NCSI" no body, qualquer outra coisa = portal
+  // Windows connecttest espera "Microsoft Connect Test"
+  Serial.println("Portal cativo: Windows detectado");
+  server.sendHeader("Location", "http://192.168.4.1/");
+  server.send(302, "text/html", "<html><body>Redirecionando...</body></html>");
+}
+
+void handleCaptiveGeneric() {
+  Serial.println("Portal cativo: generico");
+  server.sendHeader("Location", "http://192.168.4.1/");
+  server.send(302, "text/html", "<html><body><a href='http://192.168.4.1/'>Configurar WiFi</a></body></html>");
 }
 
 void handleNotFound() {
-  // Portal cativo: redireciona tudo para /
   if (currentMode == MODE_SETUP) {
+    // Em modo setup, QUALQUER request vira redirect para o portal
+    Serial.printf("Portal cativo: not found %s -> redirect\n", server.uri().c_str());
     server.sendHeader("Location", "http://192.168.4.1/");
-    server.send(302);
+    server.send(302, "text/html", "<html><body><a href='http://192.168.4.1/'>Configurar WiFi</a></body></html>");
   } else {
     server.send(404, "text/plain", "Nao encontrado");
   }
@@ -539,16 +563,26 @@ void setup() {
   server.on("/status", handleStatus);
   server.on("/save-wifi", HTTP_POST, handleSaveWifi);
   server.on("/reset-wifi", handleResetWifi);
-  // Portal cativo: endpoints que Android/iOS/Windows/macOS verificam
-  server.on("/generate_204", handleCaptiveDetect);           // Android
-  server.on("/gen_204", handleCaptiveDetect);                 // Android alt
-  server.on("/connecttest.txt", handleCaptiveDetect);         // Windows
-  server.on("/hotspot-detect.html", handleCaptiveDetect);     // Apple iOS/macOS
-  server.on("/canonical.html", handleCaptiveDetect);          // Firefox
-  server.on("/success.txt", handleCaptiveDetect);             // Firefox alt
-  server.on("/ncsi.txt", handleCaptiveDetect);                // Windows NCSI
-  server.on("/redirect", handleCaptiveDetect);                // Generic
-  server.on("/fwlink", handleCaptiveDetect);                  // Microsoft
+  // Portal cativo: endpoints por SO/navegador
+  // Android
+  server.on("/generate_204", handleCaptiveAndroid);
+  server.on("/gen_204", handleCaptiveAndroid);
+  server.on("/connectivitycheck/gstatic/com", handleCaptiveAndroid);
+  // Apple iOS/macOS
+  server.on("/hotspot-detect.html", handleCaptiveApple);
+  server.on("/library/test/success.html", handleCaptiveApple);
+  server.on("/captive-portal/api/session", handleCaptiveApple);
+  // Windows
+  server.on("/connecttest.txt", handleCaptiveWindows);
+  server.on("/ncsi.txt", handleCaptiveWindows);
+  server.on("/fwlink", handleCaptiveWindows);
+  server.on("/redirect", handleCaptiveWindows);
+  // Firefox
+  server.on("/canonical.html", handleCaptiveGeneric);
+  server.on("/success.txt", handleCaptiveGeneric);
+  // Samsung
+  server.on("/generate204", handleCaptiveAndroid);
+  server.on("/mobile/status.php", handleCaptiveAndroid);
   server.onNotFound(handleNotFound);
 
   // Carrega credenciais WiFi

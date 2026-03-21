@@ -315,6 +315,23 @@
         </div>
     </div>
 
+    <!-- Banner de Instalacao PWA -->
+    <div id="pwa-banner" class="pwa-banner hidden">
+        <div class="pwa-banner-inner">
+            <div class="pwa-banner-info">
+                <img src="/static/icon-192.png" alt="Cultivee" class="pwa-banner-icon">
+                <div>
+                    <strong>Instalar Cultivee</strong>
+                    <small>Acesse rapido pela tela inicial</small>
+                </div>
+            </div>
+            <div class="pwa-banner-actions">
+                <button class="pwa-btn-install" id="pwa-install-btn" onclick="pwaInstall()">Instalar</button>
+                <button class="pwa-btn-dismiss" onclick="pwaDismiss()">Agora nao</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Imagem -->
     <div id="modal" class="modal hidden" onclick="closeModal(event)">
         <div class="modal-content">

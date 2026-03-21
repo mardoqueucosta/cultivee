@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Leaf, ChevronDown, LayoutDashboard } from "lucide-react";
+import { Menu, X, Leaf, ChevronDown, LayoutDashboard, Download } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import {
   DropdownMenu,
@@ -133,8 +133,9 @@ const Navbar = () => {
               </a>
             </Button>
             <Button variant="eco" size="sm" asChild>
-              <a href="https://wa.me/5519999999999" target="_blank" rel="noopener noreferrer">
-                Fale Conosco
+              <a href="https://app.cultivee.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
+                <Download className="w-4 h-4" />
+                Baixar App
               </a>
             </Button>
           </div>
@@ -222,8 +223,9 @@ const Navbar = () => {
                   </a>
                 </Button>
                 <Button variant="eco" className="w-full" asChild>
-                  <a href="https://wa.me/5519999999999" target="_blank" rel="noopener noreferrer">
-                    Fale Conosco
+                  <a href="https://app.cultivee.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
+                    <Download className="w-4 h-4" />
+                    Baixar App
                   </a>
                 </Button>
               </div>

@@ -1,22 +1,28 @@
 {
-  "name": "Cultivee Monitor",
+  "name": "Cultivee - Monitoramento Inteligente",
   "short_name": "Cultivee",
-  "description": "Monitoramento inteligente de hortaliças",
+  "description": "Monitore suas plantas em tempo real. Sistema IoT completo para cultivo inteligente.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111827",
   "theme_color": "#16a34a",
   "orientation": "any",
+  "categories": ["agriculture", "utilities"],
+  "lang": "pt-BR",
   "icons": [
     {
       "src": "/static/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/static/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
-  ]
+  ],
+  "screenshots": [],
+  "prefer_related_applications": false
 }

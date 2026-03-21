@@ -277,7 +277,7 @@ function renderModules() {
                 </div>
             </div>`;
         } else {
-            // --- OFFLINE: mostra guia de conexao ---
+            // --- OFFLINE: mostra guia simples ---
             return `<div class="module-item module-offline">
                 <div class="module-header">
                     <div class="module-info">
@@ -289,31 +289,10 @@ function renderModules() {
                     </div>
                 </div>
                 <div class="module-help">
-                    <p class="help-title">Como conectar:</p>
-                    <div class="help-steps">
-                        <div class="help-step">
-                            <span class="help-num">1</span>
-                            <span>Ligue o modulo na tomada</span>
-                        </div>
-                        <div class="help-step">
-                            <span class="help-num">2</span>
-                            <span>O LED vai piscar rapido = modo Setup</span>
-                        </div>
-                        <div class="help-step">
-                            <span class="help-num">3</span>
-                            <span>No celular, conecte na rede <strong>Cultivee-Setup</strong></span>
-                        </div>
-                        <div class="help-step">
-                            <span class="help-num">4</span>
-                            <span>Configure o WiFi no portal que abrir</span>
-                        </div>
-                    </div>
-                    <div class="help-led-guide">
-                        <span class="led-item"><span class="led-blink-fast"></span> Pisca rapido = Setup</span>
-                        <span class="led-item"><span class="led-pulse"></span> Pulsa = Conectado</span>
-                        <span class="led-item"><span class="led-blink-triple"></span> 3 piscas = Sem WiFi</span>
-                    </div>
-                    ${hasBluetooth() ? '<button class="btn-ble" onclick="showBleModal()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"/></svg> Configurar via Bluetooth</button>' : ''}
+                    <p class="help-title">Modulo desconectado</p>
+                    <p style="color:#666;font-size:0.85rem;margin:0.5rem 0">Conecte no WiFi <strong>Cultivee-Setup</strong> (sem senha) e toque no botao abaixo:</p>
+                    <a href="http://192.168.4.1" target="_blank" class="btn-setup-link">Configurar WiFi do modulo</a>
+                    <p style="color:#999;font-size:0.75rem;margin-top:0.75rem;text-align:center">Se o modulo ja esta configurado, aguarde ele ficar online.</p>
                 </div>
             </div>`;
         }
@@ -760,7 +739,7 @@ function closeBleModal(event) {
 // PWA Install
 // =====================================================================
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 let deferredPrompt = null;
 
 // Registrar Service Worker + verificar atualizacoes

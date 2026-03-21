@@ -424,7 +424,7 @@ void handleSaveWifi() {
     "<li><b>Passo 1:</b> Reconecte seu celular ao WiFi <b>" + ssid + "</b></li>"
     "<li><b>Passo 2:</b> Clique no botao abaixo para abrir o app e vincular automaticamente</li>"
     "</ul>"
-    "<a class='btn' href='http://localhost:5000/?code=" + getShortId() + "'>Abrir Cultivee e vincular</a>"
+    "<a class='btn' href='" + String(APP_URL) + "/?code=" + getShortId() + "'>Abrir Cultivee e vincular</a>"
     "<p style='color:#999;font-size:0.75rem;margin-top:1.5rem'>Codigo do modulo: <b>" + getShortId() + "</b> (caso precise vincular manualmente)</p>"
     "<script>try{localStorage.setItem('cultivee_pending_code','" + getShortId() + "')}catch(e){}</script>"
     "</div></body></html>");
@@ -474,6 +474,14 @@ void handleStatus() {
 
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "application/json", json);
+}
+
+// Endpoints de deteccao de portal cativo
+// Android, iOS, Windows e macOS fazem requests especificos
+void handleCaptiveDetect() {
+  Serial.println("Portal cativo detectado -> redirect");
+  server.sendHeader("Location", "http://192.168.4.1/");
+  server.send(302, "text/html", "");
 }
 
 void handleNotFound() {
@@ -531,6 +539,16 @@ void setup() {
   server.on("/status", handleStatus);
   server.on("/save-wifi", HTTP_POST, handleSaveWifi);
   server.on("/reset-wifi", handleResetWifi);
+  // Portal cativo: endpoints que Android/iOS/Windows/macOS verificam
+  server.on("/generate_204", handleCaptiveDetect);           // Android
+  server.on("/gen_204", handleCaptiveDetect);                 // Android alt
+  server.on("/connecttest.txt", handleCaptiveDetect);         // Windows
+  server.on("/hotspot-detect.html", handleCaptiveDetect);     // Apple iOS/macOS
+  server.on("/canonical.html", handleCaptiveDetect);          // Firefox
+  server.on("/success.txt", handleCaptiveDetect);             // Firefox alt
+  server.on("/ncsi.txt", handleCaptiveDetect);                // Windows NCSI
+  server.on("/redirect", handleCaptiveDetect);                // Generic
+  server.on("/fwlink", handleCaptiveDetect);                  // Microsoft
   server.onNotFound(handleNotFound);
 
   // Carrega credenciais WiFi

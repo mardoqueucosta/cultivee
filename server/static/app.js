@@ -347,16 +347,13 @@ function closePairModal(event) {
     document.getElementById("pair-modal").classList.add("hidden");
 }
 
-const ESP_URL = "http://192.168.4.1";
-let espModuleInfo = null;
-
 function wizardShowStep(n) {
-    const allSteps = ["0", "1", "2", "3", "4", "2app", "3app", "4app"];
+    const allSteps = ["0", "1", "2", "3"];
     allSteps.forEach(id => {
         const el = document.getElementById("wizard-step-" + id);
         if (el) el.classList.toggle("hidden", id != n);
     });
-    if (n === 4 || n === "4") {
+    if (n === 3 || n === "3") {
         document.getElementById("pair-code").value = espModuleInfo ? espModuleInfo.short_id : "";
         document.getElementById("pair-name").value = "";
         document.getElementById("pair-error").classList.add("hidden");
@@ -368,137 +365,12 @@ function wizardStart(mode) {
     if (mode === "new") {
         wizardShowStep(1);
     } else {
-        wizardShowStep(4);
+        wizardShowStep(3);
     }
 }
 
 function wizardNext(step) { wizardShowStep(step); }
 function wizardBack(step) { wizardShowStep(step); }
-
-// Tenta conectar ao ESP32 na rede Cultivee-Setup
-async function wizardTryESP() {
-    const btn = document.getElementById("wizard-connect-btn");
-    const status = document.getElementById("wizard-esp-status");
-    btn.disabled = true;
-    btn.textContent = "Buscando modulo...";
-    status.textContent = "Tentando conectar ao modulo...";
-    status.className = "wizard-esp-status info";
-
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(ESP_URL + "/api/scan-wifi", { signal: controller.signal });
-        clearTimeout(timeout);
-        const data = await res.json();
-
-        espModuleInfo = { chip_id: data.chip_id, short_id: data.short_id };
-
-        // Mostrar passo 2-app: selecionar WiFi direto no app
-        const networksDiv = document.getElementById("wizard-networks");
-        networksDiv.innerHTML = "";
-
-        // Ordenar por sinal
-        data.networks.sort((a, b) => b.rssi - a.rssi);
-        // Remover duplicatas
-        const seen = new Set();
-        const unique = data.networks.filter(n => {
-            if (n.ssid === "" || seen.has(n.ssid)) return false;
-            seen.add(n.ssid);
-            return true;
-        });
-
-        unique.forEach(net => {
-            const div = document.createElement("div");
-            div.className = "wifi-network-item";
-            const bars = net.rssi > -50 ? 3 : net.rssi > -70 ? 2 : 1;
-            div.innerHTML = `
-                <div class="wifi-network-info">
-                    <span class="wifi-network-name">${net.ssid}</span>
-                    <span class="wifi-signal-bars">${'▂▄▆'.slice(0, bars)}</span>
-                </div>
-                ${net.open ? '<span class="wifi-open">Aberta</span>' : '<span class="wifi-lock">🔒</span>'}
-            `;
-            div.onclick = () => wizardSelectNetwork(net.ssid, net.open);
-            networksDiv.appendChild(div);
-        });
-
-        wizardShowStep("2app");
-    } catch (e) {
-        // Nao conseguiu conectar - fallback para fluxo manual
-        status.textContent = "Nao foi possivel conectar ao modulo. Verifique se esta na rede Cultivee-Setup.";
-        status.className = "wizard-esp-status error";
-        btn.disabled = false;
-        btn.textContent = "Tentar novamente";
-    }
-}
-
-function wizardSelectNetwork(ssid, isOpen) {
-    document.getElementById("wizard-selected-ssid").textContent = ssid;
-    document.getElementById("wizard-wifi-ssid").value = ssid;
-    const passSection = document.getElementById("wizard-pass-section");
-    if (isOpen) {
-        passSection.classList.add("hidden");
-        document.getElementById("wizard-wifi-pass").value = "";
-    } else {
-        passSection.classList.remove("hidden");
-        document.getElementById("wizard-wifi-pass").value = "";
-        setTimeout(() => document.getElementById("wizard-wifi-pass").focus(), 100);
-    }
-    wizardShowStep("3app");
-}
-
-async function wizardSendWifi() {
-    const ssid = document.getElementById("wizard-wifi-ssid").value;
-    const pass = document.getElementById("wizard-wifi-pass").value;
-    const btn = document.getElementById("wizard-send-btn");
-    const status = document.getElementById("wizard-send-status");
-
-    btn.disabled = true;
-    btn.textContent = "Enviando...";
-    status.textContent = "";
-
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-        const res = await fetch(ESP_URL + "/api/save-wifi", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ssid, password: pass }),
-            signal: controller.signal
-        });
-        clearTimeout(timeout);
-
-        if (res.ok) {
-            const data = await res.json();
-            espModuleInfo = { chip_id: data.chip_id, short_id: data.code };
-            // Sucesso! Mostrar passo de reconexao
-            document.getElementById("wizard-reconnect-ssid").textContent = ssid;
-            wizardShowStep("4app");
-        } else {
-            status.textContent = "Erro ao salvar WiFi. Tente novamente.";
-            btn.disabled = false;
-            btn.textContent = "Conectar";
-        }
-    } catch (e) {
-        // Timeout esperado - o ESP reinicia apos salvar
-        // Se deu timeout, provavelmente funcionou
-        document.getElementById("wizard-reconnect-ssid").textContent = ssid;
-        wizardShowStep("4app");
-    }
-}
-
-function wizardFinishApp() {
-    // Reconectou no WiFi normal, agora vincular automaticamente
-    if (espModuleInfo) {
-        document.getElementById("pair-code").value = espModuleInfo.short_id;
-    }
-    wizardShowStep(4);
-}
-
-function wizardFallbackManual() {
-    // Ir para fluxo manual antigo (passo 2)
-    wizardShowStep(2);
-}
 
 function copyUrl() {
     navigator.clipboard.writeText("http://192.168.4.1").then(() => {
@@ -892,7 +764,7 @@ function closeBleModal(event) {
 // PWA Install
 // =====================================================================
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 let deferredPrompt = null;
 
 // Registrar Service Worker + verificar atualizacoes

@@ -348,12 +348,12 @@ function closePairModal(event) {
 }
 
 function wizardShowStep(n) {
-    const allSteps = ["0", "1", "2", "3"];
+    const allSteps = ["0", "1", "2"];
     allSteps.forEach(id => {
         const el = document.getElementById("wizard-step-" + id);
         if (el) el.classList.toggle("hidden", id != n);
     });
-    if (n === 3 || n === "3") {
+    if (n === 2 || n === "2") {
         document.getElementById("pair-code").value = espModuleInfo ? espModuleInfo.short_id : "";
         document.getElementById("pair-name").value = "";
         document.getElementById("pair-error").classList.add("hidden");
@@ -362,7 +362,7 @@ function wizardShowStep(n) {
 }
 
 function wizardStart(mode) {
-    wizardShowStep(mode === "new" ? 1 : 3);
+    wizardShowStep(mode === "new" ? 1 : 2);
 }
 
 function wizardNext(step) { wizardShowStep(step); }
@@ -554,7 +554,7 @@ function checkPendingCode() {
 
         // Abre modal com codigo preenchido
         showPairModal();
-        wizardShowStep(3);
+        wizardShowStep(2);
         document.getElementById("pair-code").value = code;
         document.getElementById("pair-name").focus();
     }
@@ -760,7 +760,7 @@ function closeBleModal(event) {
 // PWA Install
 // =====================================================================
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 let deferredPrompt = null;
 
 // Registrar Service Worker + verificar atualizacoes

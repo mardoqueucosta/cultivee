@@ -127,7 +127,7 @@
         </main>
 
         <footer class="footer">
-            <p id="app-footer">Cultivee v1.4.0 &middot; Monitoramento inteligente</p>
+            <p id="app-footer">Cultivee v1.5.0 &middot; Monitoramento inteligente</p>
         </footer>
     </div>
 
@@ -198,72 +198,41 @@
                 </div>
             </div>
 
-            <!-- Passo 1: Conectar e configurar WiFi -->
+            <!-- Passo 1: Conectar no WiFi e abrir portal -->
             <div class="wizard-step hidden" id="wizard-step-1">
                 <div class="wizard-progress">
-                    <div class="progress-bar"><div class="progress-fill" style="width:33%"></div></div>
-                    <span class="progress-text">Passo 1 de 3</span>
+                    <div class="progress-bar"><div class="progress-fill" style="width:50%"></div></div>
+                    <span class="progress-text">Passo 1 de 2</span>
                 </div>
                 <div class="wizard-header">
                     <div class="wizard-icon wifi-icon">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
                     </div>
-                    <h3>Configure o WiFi do modulo</h3>
+                    <h3>Configure o modulo</h3>
                 </div>
                 <div class="wizard-checklist">
                     <div class="check-item">
                         <span class="check-num">1</span>
-                        <span>Va nas <strong>configuracoes WiFi</strong> do celular</span>
+                        <span>Va nas <strong>configuracoes WiFi</strong> do celular e conecte na rede <strong>Cultivee-Setup</strong> (sem senha)</span>
                     </div>
                     <div class="check-item">
                         <span class="check-num">2</span>
-                        <span>Conecte na rede <strong>Cultivee-Setup</strong> (sem senha)</span>
-                    </div>
-                    <div class="check-item">
-                        <span class="check-num">3</span>
-                        <span>Um portal vai abrir automaticamente</span>
-                    </div>
-                    <div class="check-item">
-                        <span class="check-num">4</span>
-                        <span>Escolha sua rede WiFi e digite a senha</span>
-                    </div>
-                    <div class="check-item">
-                        <span class="check-num">5</span>
-                        <span>Anote o <strong>codigo do modulo</strong> (4 letras, ex: F0C8)</span>
+                        <span>Volte aqui e toque no botao abaixo</span>
                     </div>
                 </div>
-                <p class="wizard-note">Se o portal nao abrir, acesse <strong>192.168.4.1</strong> no navegador</p>
+                <a class="btn-primary" href="http://192.168.4.1" target="_blank" style="display:block;text-align:center;text-decoration:none;padding:0.85rem;border-radius:0.5rem;font-weight:600;margin-top:1rem">Configurar WiFi do modulo</a>
+                <p class="wizard-note" style="margin-top:1rem">Apos configurar, o modulo vai reiniciar. Reconecte no seu WiFi normal e toque abaixo.</p>
                 <div class="wizard-actions">
                     <button class="btn-secondary" onclick="wizardBack(0)">Voltar</button>
-                    <button class="btn-primary" onclick="wizardNext(2)">Pronto, configurei</button>
+                    <button class="btn-primary" onclick="wizardNext(2)">Ja configurei</button>
                 </div>
             </div>
 
-            <!-- Passo 2: Reconectar WiFi -->
+            <!-- Passo 2: Vincular codigo -->
             <div class="wizard-step hidden" id="wizard-step-2">
                 <div class="wizard-progress">
-                    <div class="progress-bar"><div class="progress-fill" style="width:66%"></div></div>
-                    <span class="progress-text">Passo 2 de 3</span>
-                </div>
-                <div class="wizard-header">
-                    <div class="wizard-icon success-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    </div>
-                    <h3>Reconecte seu WiFi</h3>
-                    <p class="wizard-desc">O modulo ja esta configurado! Agora volte para sua rede WiFi normal nas configuracoes do celular.</p>
-                </div>
-                <p class="wizard-note">A rede "Cultivee-Setup" vai desaparecer. Isso e normal!</p>
-                <div class="wizard-actions">
-                    <button class="btn-secondary" onclick="wizardBack(1)">Voltar</button>
-                    <button class="btn-primary" onclick="wizardNext(3)">Ja reconectei</button>
-                </div>
-            </div>
-
-            <!-- Passo 3: Vincular codigo -->
-            <div class="wizard-step hidden" id="wizard-step-3">
-                <div class="wizard-progress">
                     <div class="progress-bar"><div class="progress-fill" style="width:100%"></div></div>
-                    <span class="progress-text">Passo 3 de 3</span>
+                    <span class="progress-text">Passo 2 de 2</span>
                 </div>
                 <div class="wizard-header">
                     <div class="wizard-icon link-icon">

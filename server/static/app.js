@@ -752,14 +752,49 @@ function closeBleModal(event) {
 // PWA Install
 // =====================================================================
 
+const APP_VERSION = '1.0.0';
 let deferredPrompt = null;
 
-// Registrar Service Worker
+// Registrar Service Worker + verificar atualizacoes
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('SW registrado:', reg.scope))
+        .then(reg => {
+            console.log('SW registrado:', reg.scope);
+
+            // Verificar atualizacoes a cada 30 minutos
+            setInterval(() => reg.update(), 30 * 60 * 1000);
+
+            // Detectar novo SW instalado (atualizacao disponivel)
+            reg.addEventListener('updatefound', () => {
+                const newWorker = reg.installing;
+                newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        // Novo SW pronto, mostrar banner de atualizacao
+                        showUpdateBanner();
+                    }
+                });
+            });
+        })
         .catch(err => console.log('SW erro:', err));
+
+    // Escutar mensagens do SW
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data.type === 'APP_UPDATED') {
+            showUpdateBanner(event.data.version);
+        }
+        if (event.data.type === 'VERSION') {
+            console.log('SW version:', event.data.version);
+        }
+    });
 }
+
+// Mostrar versao no footer
+document.addEventListener('DOMContentLoaded', () => {
+    const footer = document.querySelector('.footer');
+    if (footer) {
+        footer.textContent = `Cultivee v${APP_VERSION} · Monitoramento inteligente`;
+    }
+});
 
 // Capturar evento de instalacao
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -816,4 +851,60 @@ function pwaInstall() {
 function pwaDismiss() {
     hidePwaBanner();
     localStorage.setItem('pwa_dismissed', Date.now().toString());
+}
+
+// =====================================================================
+// App Update
+// =====================================================================
+
+function showUpdateBanner(newVersion) {
+    // Remover banner existente se houver
+    let banner = document.getElementById('update-banner');
+    if (banner) banner.remove();
+
+    banner = document.createElement('div');
+    banner.id = 'update-banner';
+    banner.className = 'update-banner';
+    banner.innerHTML = `
+        <div class="update-banner-inner">
+            <div class="update-banner-info">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <div>
+                    <strong>Nova versao disponivel${newVersion ? ' (v' + newVersion + ')' : ''}</strong>
+                    <small>Atualize para ter as ultimas melhorias</small>
+                </div>
+            </div>
+            <div class="update-banner-actions">
+                <button class="pwa-btn-install" onclick="doAppUpdate()">Atualizar</button>
+                <button class="pwa-btn-dismiss" onclick="dismissUpdate()">Depois</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(banner);
+}
+
+function doAppUpdate() {
+    const banner = document.getElementById('update-banner');
+    if (banner) banner.remove();
+
+    // Forcar o novo SW a ativar
+    if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.ready.then((reg) => {
+            if (reg.waiting) {
+                reg.waiting.postMessage('SKIP_WAITING');
+            }
+        });
+    }
+
+    // Recarregar a pagina para carregar nova versao
+    window.location.reload(true);
+}
+
+function dismissUpdate() {
+    const banner = document.getElementById('update-banner');
+    if (banner) banner.remove();
 }

@@ -352,17 +352,74 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; display: flex; flex-d
 }
 
 @media (max-width: 480px) {
-    .pwa-banner-inner {
+    .pwa-banner-inner, .update-banner-inner {
         flex-direction: column;
         text-align: center;
     }
-    .pwa-banner-info {
+    .pwa-banner-info, .update-banner-info {
         flex-direction: column;
     }
-    .pwa-banner-actions {
+    .pwa-banner-actions, .update-banner-actions {
         width: 100%;
     }
     .pwa-btn-install {
         flex: 1;
     }
+}
+
+/* Update Banner */
+.update-banner {
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1a2e;
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    z-index: 1001;
+    box-shadow: 0 8px 30px rgba(59, 130, 246, 0.3);
+    animation: slideDown 0.3s ease-out;
+    max-width: 500px;
+    width: calc(100% - 2rem);
+}
+
+@keyframes slideDown {
+    from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+    to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+.update-banner-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.update-banner-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.update-banner-info svg {
+    color: #3b82f6;
+    flex-shrink: 0;
+}
+
+.update-banner-info strong {
+    display: block;
+    color: #fff;
+    font-size: 0.9rem;
+}
+
+.update-banner-info small {
+    color: #aaa;
+    font-size: 0.75rem;
+}
+
+.update-banner-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
 }

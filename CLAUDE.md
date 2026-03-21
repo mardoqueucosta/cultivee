@@ -195,6 +195,19 @@ O script deploy.sh automaticamente:
 
 ## App/PWA (server/static/)
 
+### Versionamento
+A versao do app esta definida em DOIS lugares (manter sincronizados):
+1. `server/static/app.js` -> `const APP_VERSION = '1.0.0';`
+2. `server/static/sw.js` -> `const APP_VERSION = '1.0.0';`
+
+**Ao fazer deploy com mudancas no app, SEMPRE incrementar a versao nos dois arquivos.**
+Formato: MAJOR.MINOR.PATCH (ex: 1.0.0 -> 1.0.1 para fix, 1.1.0 para feature, 2.0.0 para breaking)
+
+O Service Worker detecta a mudanca de versao e notifica o usuario com um banner:
+"Nova versao disponivel (v1.0.1) - Atualizar"
+
+A versao aparece no footer do app: "Cultivee v1.0.0"
+
 ### Funcionalidades
 - Login/registro de usuarios
 - Card do modulo: status online/offline, SSID, sinal WiFi, uptime, IP
@@ -204,13 +217,14 @@ O script deploy.sh automaticamente:
 - Intervalo de captura configuravel (dropdown: 10s a 1h)
 - Modal de setup guiado (wizard 4 passos)
 - Banner de instalacao PWA (Android/Chrome nativo, iOS manual)
-- Service Worker com cache offline
+- Banner de atualizacao quando nova versao disponivel
+- Service Worker com cache offline e verificacao de updates a cada 30min
 
 ### Arquivos
 - `index.html` - HTML completo (SPA, sem framework)
-- `app.js` - Toda logica JS (~800 linhas)
-- `style.css` - Estilos (~360 linhas)
-- `sw.js` - Service Worker
+- `app.js` - Toda logica JS (APP_VERSION definido aqui)
+- `style.css` - Estilos
+- `sw.js` - Service Worker (APP_VERSION definido aqui, CACHE_NAME usa a versao)
 - `manifest.json` - PWA manifest
 
 ## Site (site/)

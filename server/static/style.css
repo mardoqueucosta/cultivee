@@ -423,3 +423,71 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; display: flex; flex-d
     gap: 0.5rem;
     flex-shrink: 0;
 }
+
+/* WiFi network list in wizard */
+.wizard-networks-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 0.75rem 0;
+}
+
+.wifi-network-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.85rem 1rem;
+    margin: 0.25rem 0;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.wifi-network-item:hover {
+    background: #f0fdf4;
+    border-color: var(--green);
+}
+
+.wifi-network-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.wifi-network-name {
+    font-weight: 500;
+    color: #1a1a2e;
+}
+
+.wifi-signal-bars {
+    font-size: 0.7rem;
+    color: var(--green);
+}
+
+.wifi-open {
+    font-size: 0.75rem;
+    color: #888;
+}
+
+.wifi-lock {
+    font-size: 0.8rem;
+}
+
+.wizard-esp-status {
+    text-align: center;
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+}
+
+.wizard-esp-status.info {
+    color: #3b82f6;
+    background: #eff6ff;
+}
+
+.wizard-esp-status.error {
+    color: #dc2626;
+    background: #fef2f2;
+}

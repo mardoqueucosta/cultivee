@@ -390,6 +390,67 @@ void handleRoot() {
   }
 }
 
+// CORS headers para permitir PWA em app.cultivee.com.br acessar o ESP32 em 192.168.4.1
+void sendCORS() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+void handleCORSPreflight() {
+  sendCORS();
+  server.send(204);
+}
+
+// Escaneia redes WiFi e retorna JSON
+void handleScanWifi() {
+  sendCORS();
+  Serial.println("Escaneando redes WiFi...");
+  int n = WiFi.scanNetworks();
+  String json = "{\"networks\":[";
+  for (int i = 0; i < n; i++) {
+    if (i > 0) json += ",";
+    json += "{\"ssid\":\"" + WiFi.SSID(i) + "\","
+            "\"rssi\":" + String(WiFi.RSSI(i)) + ","
+            "\"open\":" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "true" : "false") + "}";
+  }
+  json += "],\"chip_id\":\"" + chipId + "\",\"short_id\":\"" + getShortId() + "\"}";
+  server.send(200, "application/json", json);
+  WiFi.scanDelete();
+}
+
+// Salva WiFi via JSON (para PWA) ou form (para portal cativo)
+void handleSaveWifiAPI() {
+  sendCORS();
+  String ssid, pass;
+
+  // Tenta ler JSON do body
+  if (server.hasHeader("Content-Type") && server.header("Content-Type").indexOf("json") >= 0) {
+    String body = server.arg("plain");
+    // Parse simples do JSON
+    int ssidStart = body.indexOf("\"ssid\":\"") + 8;
+    int ssidEnd = body.indexOf("\"", ssidStart);
+    int passStart = body.indexOf("\"password\":\"") + 12;
+    int passEnd = body.indexOf("\"", passStart);
+    if (ssidStart > 7) ssid = body.substring(ssidStart, ssidEnd);
+    if (passStart > 11) pass = body.substring(passStart, passEnd);
+  } else {
+    ssid = server.arg("ssid");
+    pass = server.arg("pass");
+  }
+
+  if (ssid.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"SSID vazio\"}");
+    return;
+  }
+
+  saveWiFiCredentials(ssid, pass);
+  String response = "{\"ok\":true,\"ssid\":\"" + ssid + "\",\"code\":\"" + getShortId() + "\",\"chip_id\":\"" + chipId + "\"}";
+  server.send(200, "application/json", response);
+  delay(2000);
+  ESP.restart();
+}
+
 void handleSaveWifi() {
   String ssid = server.arg("ssid");
   String pass = server.arg("pass");
@@ -562,6 +623,12 @@ void setup() {
   server.on("/live.jpg", handleLive);
   server.on("/status", handleStatus);
   server.on("/save-wifi", HTTP_POST, handleSaveWifi);
+  server.on("/save-wifi", HTTP_OPTIONS, handleCORSPreflight);
+  server.on("/api/save-wifi", HTTP_POST, handleSaveWifiAPI);
+  server.on("/api/save-wifi", HTTP_OPTIONS, handleCORSPreflight);
+  server.on("/api/scan-wifi", handleScanWifi);
+  server.on("/api/scan-wifi", HTTP_OPTIONS, handleCORSPreflight);
+  server.on("/api/status", [](){ sendCORS(); handleStatus(); });
   server.on("/reset-wifi", handleResetWifi);
   // Portal cativo: endpoints por SO/navegador
   // Android

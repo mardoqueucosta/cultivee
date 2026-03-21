@@ -218,11 +218,79 @@
                 <p class="wizard-note">Sua internet vai cair temporariamente. Isso e normal!</p>
                 <div class="wizard-actions">
                     <button class="btn-secondary" onclick="wizardBack(0)">Voltar</button>
-                    <button class="btn-primary" onclick="wizardNext(2)">Ja conectei</button>
+                    <button class="btn-primary" id="wizard-connect-btn" onclick="wizardTryESP()">Ja conectei</button>
+                </div>
+                <p class="wizard-esp-status" id="wizard-esp-status"></p>
+                <p style="text-align:center;margin-top:0.5rem"><a href="#" onclick="wizardFallbackManual()" style="color:#888;font-size:0.8rem">Configurar manualmente</a></p>
+            </div>
+
+            <!-- Passo 2-app: Selecionar WiFi (direto no app) -->
+            <div class="wizard-step hidden" id="wizard-step-2app">
+                <div class="wizard-progress">
+                    <div class="progress-bar"><div class="progress-fill" style="width:50%"></div></div>
+                    <span class="progress-text">Passo 2 de 4</span>
+                </div>
+                <div class="wizard-header">
+                    <div class="wizard-icon settings-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+                    </div>
+                    <h3>Selecione sua rede WiFi</h3>
+                    <p class="wizard-desc">Escolha a rede que o modulo deve usar:</p>
+                </div>
+                <div class="wizard-networks-list" id="wizard-networks"></div>
+                <div class="wizard-actions">
+                    <button class="btn-secondary" onclick="wizardBack(1)">Voltar</button>
                 </div>
             </div>
 
-            <!-- Passo 2: Configurar WiFi no portal -->
+            <!-- Passo 3-app: Digitar senha do WiFi -->
+            <div class="wizard-step hidden" id="wizard-step-3app">
+                <div class="wizard-progress">
+                    <div class="progress-bar"><div class="progress-fill" style="width:75%"></div></div>
+                    <span class="progress-text">Passo 3 de 4</span>
+                </div>
+                <div class="wizard-header">
+                    <div class="wizard-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </div>
+                    <h3>Conectar em <span id="wizard-selected-ssid"></span></h3>
+                </div>
+                <input type="hidden" id="wizard-wifi-ssid">
+                <div id="wizard-pass-section">
+                    <input type="password" id="wizard-wifi-pass" placeholder="Senha do WiFi" style="width:100%;margin-bottom:0.75rem">
+                </div>
+                <button class="btn-primary" id="wizard-send-btn" onclick="wizardSendWifi()" style="width:100%">Conectar</button>
+                <p class="wizard-esp-status error" id="wizard-send-status"></p>
+                <div class="wizard-actions" style="margin-top:0.5rem">
+                    <button class="btn-secondary" onclick="wizardShowStep('2app')">Voltar</button>
+                </div>
+            </div>
+
+            <!-- Passo 4-app: Reconectar WiFi normal -->
+            <div class="wizard-step hidden" id="wizard-step-4app">
+                <div class="wizard-progress">
+                    <div class="progress-bar"><div class="progress-fill" style="width:90%"></div></div>
+                    <span class="progress-text">Passo 3 de 4</span>
+                </div>
+                <div class="wizard-header">
+                    <div class="wizard-icon success-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </div>
+                    <h3>Modulo configurado!</h3>
+                    <p class="wizard-desc">Agora reconecte seu celular na rede <strong id="wizard-reconnect-ssid"></strong></p>
+                </div>
+                <div class="wifi-card reconnect-card">
+                    <div class="wifi-info">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+                        <span class="wifi-value">Volte para seu WiFi normal</span>
+                    </div>
+                </div>
+                <div class="wizard-actions">
+                    <button class="btn-primary" onclick="wizardFinishApp()" style="width:100%">Ja reconectei, vincular modulo</button>
+                </div>
+            </div>
+
+            <!-- Passo 2: Configurar WiFi no portal (fallback manual) -->
             <div class="wizard-step hidden" id="wizard-step-2">
                 <div class="wizard-progress">
                     <div class="progress-bar"><div class="progress-fill" style="width:50%"></div></div>

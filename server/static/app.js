@@ -168,7 +168,6 @@ async function setCaptureInterval(chipId, interval) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ chip_id: chipId, capture_interval: parseInt(interval) })
         });
-        // Feedback visual
         const selects = document.querySelectorAll(".config-select");
         selects.forEach(s => {
             if (s.value == interval) {
@@ -178,6 +177,39 @@ async function setCaptureInterval(chipId, interval) {
         });
     } catch (e) {
         alert("Erro ao alterar intervalo: " + e.message);
+    }
+}
+
+async function toggleRecording() {
+    const cam = modules.find(m => m.type === "cam" && m.online);
+    if (!cam) return;
+
+    const newState = !cam.recording;
+    try {
+        await api("/api/modules/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chip_id: cam.chip_id, recording: newState })
+        });
+        cam.recording = newState;
+        updateRecButton(newState);
+    } catch (e) {
+        alert("Erro: " + e.message);
+    }
+}
+
+function updateRecButton(recording) {
+    const btn = document.getElementById("btn-rec");
+    const dot = document.getElementById("rec-dot");
+    const label = document.getElementById("rec-label");
+    if (!btn) return;
+
+    if (recording) {
+        btn.classList.add("recording");
+        label.textContent = "GRAVANDO";
+    } else {
+        btn.classList.remove("recording");
+        label.textContent = "REC";
     }
 }
 
@@ -290,6 +322,10 @@ function renderModules() {
             </div>`;
         }
     }).join("");
+
+    // Atualiza botao REC
+    const cam = modules.find(m => m.type === "cam" && m.online);
+    if (cam) updateRecButton(cam.recording);
 }
 
 function toggleModuleDetails(chipId) {
@@ -741,7 +777,7 @@ function closeBleModal(event) {
 // PWA Install
 // =====================================================================
 
-const APP_VERSION = '1.7.2';
+const APP_VERSION = '1.8.0';
 let deferredPrompt = null;
 
 // Registrar Service Worker + verificar atualizacoes

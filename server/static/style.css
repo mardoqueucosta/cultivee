@@ -575,6 +575,47 @@ main { max-width: 1200px; margin: 0 auto; padding: 0.75rem; display: flex; flex-
 }
 .btn-setup-small:hover { background: var(--green-dark); }
 
+/* REC button */
+.btn-rec {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border: 2px solid #ccc;
+    border-radius: 2rem;
+    background: #fff;
+    color: #666;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+}
+.btn-rec:hover { border-color: #e74c3c; color: #e74c3c; }
+
+.rec-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ccc;
+    transition: all 0.2s;
+}
+
+.btn-rec.recording {
+    border-color: #e74c3c;
+    background: #fdf0f0;
+    color: #e74c3c;
+}
+.btn-rec.recording .rec-dot {
+    background: #e74c3c;
+    animation: recPulse 1s ease-in-out infinite;
+}
+
+@keyframes recPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
 /* Setup link button */
 .btn-setup-link {
     display: block;

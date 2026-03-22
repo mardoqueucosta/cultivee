@@ -270,3 +270,32 @@ def set_capture_interval(chip_id, interval_seconds):
     )
     conn.commit()
     conn.close()
+
+
+def get_recording(chip_id):
+    """Retorna se gravacao esta ativa (default False)."""
+    conn = get_db()
+    try:
+        conn.execute("ALTER TABLE modules ADD COLUMN recording INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    row = conn.execute(
+        "SELECT recording FROM modules WHERE chip_id = ?", (chip_id,)
+    ).fetchone()
+    conn.close()
+    return bool(row["recording"]) if row and row["recording"] else False
+
+
+def set_recording(chip_id, active):
+    """Ativa/desativa gravacao."""
+    conn = get_db()
+    try:
+        conn.execute("ALTER TABLE modules ADD COLUMN recording INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    conn.execute(
+        "UPDATE modules SET recording = ? WHERE chip_id = ?",
+        (1 if active else 0, chip_id)
+    )
+    conn.commit()
+    conn.close()

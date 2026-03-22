@@ -162,7 +162,8 @@ def register_module():
     models.register_module(chip_id, short_id, module_type, ip, ssid, rssi, uptime, free_heap)
     log.info(f"Modulo registrado: {module_type} {chip_id} ({short_id}) IP={ip} WiFi={ssid} RSSI={rssi}")
     capture_interval = models.get_capture_interval(chip_id)
-    return jsonify({"status": "ok", "capture_interval": capture_interval})
+    recording = models.get_recording(chip_id)
+    return jsonify({"status": "ok", "capture_interval": capture_interval, "recording": recording})
 
 
 @app.route("/api/modules/config", methods=["POST"])
@@ -172,6 +173,7 @@ def set_module_config():
     data = request.get_json()
     chip_id = data.get("chip_id", "")
     capture_interval = data.get("capture_interval")
+    recording = data.get("recording")
 
     if not chip_id:
         return jsonify({"error": "chip_id obrigatorio"}), 400
@@ -186,7 +188,11 @@ def set_module_config():
         models.set_capture_interval(chip_id, capture_interval)
         log.info(f"Intervalo de captura alterado: {chip_id} -> {capture_interval}s")
 
-    return jsonify({"status": "ok", "capture_interval": capture_interval})
+    if recording is not None:
+        models.set_recording(chip_id, bool(recording))
+        log.info(f"Gravacao {'ativada' if recording else 'desativada'}: {chip_id}")
+
+    return jsonify({"status": "ok", "capture_interval": capture_interval or models.get_capture_interval(chip_id), "recording": models.get_recording(chip_id)})
 
 
 @app.route("/api/modules/pair", methods=["POST"])
@@ -234,6 +240,7 @@ def list_modules():
         else:
             m["online"] = False
         m["capture_interval"] = models.get_capture_interval(m["chip_id"])
+        m["recording"] = models.get_recording(m["chip_id"])
 
     return jsonify({"modules": modules})
 
@@ -350,6 +357,10 @@ def upload_image():
 
     if not module.get("user_id"):
         return jsonify({"error": "Modulo nao pareado"}), 400
+
+    # Verifica se gravacao esta ativa
+    if not models.get_recording(chip_id):
+        return jsonify({"status": "skipped", "reason": "recording off"}), 200
 
     # Aceita imagem via file upload ou raw body
     if "image" in request.files:
@@ -529,6 +540,14 @@ def service_worker():
     response = send_from_directory("static", "sw.js")
     response.headers['Service-Worker-Allowed'] = '/'
     response.headers['Content-Type'] = 'application/javascript'
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return response
+
+@app.after_request
+def add_no_cache_for_static(response):
+    """Evitar cache agressivo dos arquivos estaticos para PWA atualizar"""
+    if request.path.startswith('/static/') or request.path == '/':
+        response.headers['Cache-Control'] = 'no-cache, must-revalidate, max-age=0'
     return response
 
 

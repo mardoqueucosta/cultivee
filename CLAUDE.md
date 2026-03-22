@@ -285,3 +285,62 @@ npm run build  # gera dist/
 1. Editar no REPOSITORIO (nunca no servidor)
 2. git add + commit + push
 3. `bash deploy.sh` (qualquer variante envia o docker-compose.yml)
+
+## Sistema Hidroponia (firmware-ctrl/)
+
+### Hardware
+- **Placa:** ESP32-WROOM-32D (HW-394) com placa expansao bornes parafuso
+- **Porta:** COM7
+- **Board Arduino:** esp32:esp32:esp32doit-devkit-v1
+- **Rele:** Modulo 2 canais 5V (JQC3F-5VDC-C) com optoacoplador PC817
+  - IN1 -> GPIO4 (Lampada)
+  - IN2 -> GPIO5 (Bomba)
+  - VCC -> VIN (5V), GND compartilhado, jumper RY-VCC mantido
+
+### Compilar e gravar
+```bash
+# Compilar
+"C:/Users/user/arduino-cli/arduino-cli.exe" compile --fqbn esp32:esp32:esp32doit-devkit-v1 "D:/01-projetos-claude/cultivee/firmware-ctrl"
+
+# Gravar (COM7)
+"C:/Users/user/arduino-cli/arduino-cli.exe" upload --fqbn esp32:esp32:esp32doit-devkit-v1 -p COM7 "D:/01-projetos-claude/cultivee/firmware-ctrl"
+```
+
+### Servidor de desenvolvimento
+```bash
+cd D:/01-projetos-claude/cultivee/firmware-ctrl
+python server-dev.py
+# Acessa em http://localhost:5001
+```
+
+O server-dev.py:
+- Serve o dashboard de hidroponia em localhost:5001
+- Envia comandos serial para o ESP32-WROOM (L1/L0/P1/P0/S) via Win32 API
+- NAO usa pyserial (usa ctypes com CreateFileW/WriteFile/ReadFile)
+- Porta serial COM7 configurada no topo do arquivo
+
+### Comunicacao serial ESP32-WROOM
+- `L1` = Liga luz, `L0` = Desliga luz
+- `P1` = Liga bomba, `P0` = Desliga bomba
+- `S` = Status (retorna JSON com estado dos reles e config)
+
+### Funcionalidades implementadas
+- **Fases configuraveis:** Germinacao, Bercario, Engorda (nome, duracao, luz, irrigacao)
+- **Cada fase define:**
+  - Horario de luz (liga/desliga)
+  - Irrigacao dia (minutos on/off, enquanto luz ligada)
+  - Irrigacao noite (minutos on/off, enquanto luz desligada)
+- **Controle automatico:** baseado em fase atual + horario NTP
+- **Modo manual:** liga/desliga reles via interface web
+- **Dashboard:** status, dia do ciclo, fase ativa, progresso
+- **Pagina config:** /config com formulario para editar fases e data de inicio
+- **Design:** dark mode com cores Cultivee
+
+### Pendencias
+- Integrar ao servidor VPS (app.cultivee.com.br) em vez de localhost
+- Sensor DHT22 (temperatura/umidade) quando disponivel
+- Botao start/stop gravacao de imagens no app Cultivee
+- Testar automacao completa em ciclo real
+
+### launch.json
+O preview do hidroponia esta em `.claude/launch.json` com nome "hidroponia" na porta 5001.

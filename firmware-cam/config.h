@@ -13,8 +13,8 @@
 */
 
 // ===== AMBIENTE ATIVO =====
-#define ENV_LOCAL
-// #define ENV_PRODUCTION
+// #define ENV_LOCAL
+#define ENV_PRODUCTION
 // ==========================
 
 // ===== LOCAL: ESP32 envia dados para o PC de desenvolvimento =====

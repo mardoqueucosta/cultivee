@@ -44,7 +44,7 @@ struct Phase {
 // --- Variaveis globais ---
 Phase phases[MAX_PHASES];
 int numPhases = 0;
-char startDate[12] = "2025-01-01";
+char startDate[12] = "2026-03-23";
 bool modeAuto = true;
 bool manualLight = false;
 bool manualPump = false;
@@ -102,10 +102,19 @@ void clearWiFiCredentials() {
   savedPass = "";
 }
 
+void startAP() {
+  // AP sempre ativo — modo hibrido
+  WiFi.softAP(AP_SSID);
+  delay(100);
+  dnsServer.start(53, "*", WiFi.softAPIP());
+  Serial.printf("AP ativo: %s IP: %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
+}
+
 bool connectWiFi() {
   if (savedSSID.length() == 0) return false;
   Serial.printf("Conectando em '%s'...\n", savedSSID.c_str());
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA);  // Hibrido: AP + Station
+  startAP();
   WiFi.begin(savedSSID.c_str(), savedPass.c_str());
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
@@ -114,20 +123,20 @@ bool connectWiFi() {
   }
   Serial.println();
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("Conectado! IP: %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("Conectado! IP STA: %s | IP AP: %s\n",
+      WiFi.localIP().toString().c_str(), WiFi.softAPIP().toString().c_str());
     return true;
   }
-  Serial.println("Falha ao conectar WiFi");
+  Serial.println("Falha ao conectar WiFi (AP continua ativo)");
   return false;
 }
 
-void startSetupAP() {
+void startSetupMode() {
+  // Sem credenciais — modo setup (so AP)
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(AP_SSID);
-  delay(100);
-  dnsServer.start(53, "*", WiFi.softAPIP());
+  startAP();
   currentMode = MODE_SETUP;
-  Serial.printf("AP Setup iniciado: %s IP: %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
+  Serial.println("Modo SETUP — sem credenciais WiFi");
 }
 
 // ===================== NTP =====================
@@ -768,19 +777,38 @@ void handleDashboard() {
     progressBar += "</div>";
   }
 
-  // Fases detalhadas
+  // Fases detalhadas com dias percorridos
   String phasesHtml = "";
+  int daysAccum = 0;
   for (int i = 0; i < numPhases; i++) {
     Phase *ph = &phases[i];
-    String border = i == phaseIdx ? "border-left:4px solid #27ae60" : "border-left:4px solid #e0e0e0";
-    String badge = i == phaseIdx ? " <span style='background:#27ae60;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.65rem'>ATIVA</span>" : "";
-    String diasStr = ph->days > 0 ? String(ph->days) + " dias" : "&#8734;";
+    bool isActive = (i == phaseIdx);
+    String border = isActive ? "border-left:4px solid #27ae60;background:rgba(39,174,96,0.08)" : "border-left:4px solid #3a3d45";
+    String badge = isActive ? " <span style='background:#27ae60;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.65rem'>ATIVA</span>" : "";
 
-    phasesHtml += "<div style='background:#fff;border-radius:12px;padding:12px;margin-bottom:8px;" + border + "'>";
+    // Dias percorridos
+    String diasStr;
+    if (ph->days > 0) {
+      if (isActive) {
+        int daysInPhase = cycleDay - daysAccum;
+        if (daysInPhase < 0) daysInPhase = 0;
+        diasStr = String(daysInPhase) + " de " + String(ph->days) + " dias";
+      } else if (i < phaseIdx) {
+        diasStr = String(ph->days) + "/" + String(ph->days) + " dias &#10003;";
+      } else {
+        diasStr = String(ph->days) + " dias";
+      }
+      daysAccum += ph->days;
+    } else {
+      diasStr = "&#8734;";
+      daysAccum += 30;
+    }
+
+    phasesHtml += "<div style='border-radius:10px;padding:10px;margin-bottom:6px;" + border + "'>";
     phasesHtml += "<div style='display:flex;justify-content:space-between;align-items:center'>";
     phasesHtml += "<b>" + String(ph->name) + "</b>" + badge;
     phasesHtml += "<span style='color:#888;font-size:0.8rem'>" + diasStr + "</span></div>";
-    phasesHtml += "<div style='color:#666;font-size:0.8rem;margin-top:6px'>";
+    phasesHtml += "<div style='color:#888;font-size:0.75rem;margin-top:4px'>";
     phasesHtml += "&#128161; " + String(ph->lightOnHour) + ":" + (ph->lightOnMin < 10 ? "0" : "") + String(ph->lightOnMin);
     phasesHtml += " - " + String(ph->lightOffHour) + ":" + (ph->lightOffMin < 10 ? "0" : "") + String(ph->lightOffMin) + "<br>";
     phasesHtml += "&#128167; Dia: " + String(ph->pumpOnDay) + "/" + String(ph->pumpOffDay) + "min";
@@ -788,71 +816,76 @@ void handleDashboard() {
     phasesHtml += "</div></div>";
   }
 
+  // Data de hoje formatada
+  char todayStr[11] = "--/--/----";
+  if (hasTime) snprintf(todayStr, sizeof(todayStr), "%02d/%02d/%04d", t.tm_mday, t.tm_mon + 1, t.tm_year + 1900);
+
+  // Data de inicio formatada (YYYY-MM-DD -> DD/MM/YYYY)
+  char startDateFmt[11] = "--/--/----";
+  int sy2, sm2, sd2;
+  if (sscanf(startDate, "%d-%d-%d", &sy2, &sm2, &sd2) == 3) {
+    snprintf(startDateFmt, sizeof(startDateFmt), "%02d/%02d/%04d", sd2, sm2, sy2);
+  }
+
+  // Indicadores de status
+  String lightIndicator = lightState ? "<span style='color:#27ae60'>&#9679; Luz Ligada</span>" : "<span style='color:#666'>&#9679; Luz Desligada</span>";
+  String pumpIndicator = pumpState ? "<span style='color:#3498db'>&#9679; Bomba Ligada</span>" : "<span style='color:#666'>&#9679; Bomba Desligada</span>";
+
+  // Botoes manuais (so aparecem no modo manual)
+  String manualBtns = "";
+  if (!modeAuto) {
+    manualBtns = "<div style='display:flex;gap:8px;margin-top:10px'>"
+      "<button onclick=\"cmd('light','toggle')\" style='flex:1;padding:12px;border-radius:10px;border:none;font-weight:700;font-size:0.9rem;cursor:pointer;"
+      + String(lightState ? "background:#27ae60;color:#fff'" : "background:#2a2d35;color:#aaa;border:1px solid #3a3d45'") + ">LUZ " + (lightState ? "ON" : "OFF") + "</button>"
+      "<button onclick=\"cmd('pump','toggle')\" style='flex:1;padding:12px;border-radius:10px;border:none;font-weight:700;font-size:0.9rem;cursor:pointer;"
+      + String(pumpState ? "background:#3498db;color:#fff'" : "background:#2a2d35;color:#aaa;border:1px solid #3a3d45'") + ">BOMBA " + (pumpState ? "ON" : "OFF") + "</button></div>";
+  }
+
+  String modeBtn = modeAuto
+    ? "<button onclick=\"cmd('mode','toggle')\" style='width:100%;padding:12px;border-radius:10px;border:1px solid #27ae60;background:rgba(39,174,96,0.1);color:#27ae60;font-weight:700;cursor:pointer'>&#9881; Modo Automatico</button>"
+    : "<button onclick=\"cmd('mode','toggle')\" style='width:100%;padding:12px;border-radius:10px;border:1px solid #e67e22;background:rgba(230,126,34,0.1);color:#e67e22;font-weight:700;cursor:pointer'>&#9995; Modo Manual</button>";
+
   String html = R"rawliteral(<!DOCTYPE html><html><head>
 <meta name='viewport' content='width=device-width,initial-scale=1'>
 <meta charset='UTF-8'>
 <title>Cultivee Hidroponia</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,sans-serif;background:#f0f2f5;color:#1a1a2e;max-width:480px;margin:0 auto}
-.top{background:linear-gradient(135deg,#1a472a,#27ae60);color:#fff;padding:20px;text-align:center}
-.top h1{font-size:1.3rem;margin-bottom:2px}
-.top p{font-size:0.8rem;opacity:0.8}
-.card{background:#fff;border-radius:16px;margin:10px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.stat{text-align:center}
-.stat .label{font-size:0.7rem;color:#888;text-transform:uppercase;font-weight:600}
-.stat .value{font-size:1.5rem;font-weight:700;color:#1a472a}
-.btn{display:inline-block;padding:10px 20px;border-radius:25px;font-weight:700;font-size:0.85rem;
-border:none;cursor:pointer;text-decoration:none;text-align:center}
-.btn-on{background:#27ae60;color:#fff}
-.btn-off{background:#e74c3c;color:#fff}
-.btn-outline{background:#fff;color:#27ae60;border:2px solid #27ae60}
-.btn-gray{background:#95a5a6;color:#fff}
-.status-row{display:flex;gap:8px;justify-content:center;margin:10px 0}
-.progress{display:flex;border-radius:8px;overflow:hidden;margin:10px 0}
-.footer{text-align:center;padding:15px;color:#888;font-size:0.75rem}
+body{font-family:-apple-system,sans-serif;background:#1a1d23;color:#e0e0e0;max-width:480px;margin:0 auto}
+.top{background:#22252d;padding:16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #2a2d35}
+.logo{width:36px;height:36px;background:#27ae60;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1.1rem}
+.top h1{color:#27ae60;font-size:1.1rem;margin:0}.top p{color:#888;font-size:0.75rem;margin:0}
+.card{background:#22252d;border-radius:12px;margin:10px;padding:14px;border:1px solid #2a2d35}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:#1a1d23;border-radius:8px;padding:10px;text-align:center}
+.stat .lb{font-size:0.65rem;color:#888;text-transform:uppercase;font-weight:600}
+.stat .vl{font-size:1.3rem;font-weight:700;color:#27ae60}
+.ind{display:flex;justify-content:center;gap:12px;padding:8px 0;font-size:0.85rem}
+.footer{text-align:center;padding:12px;font-size:0.7rem;color:#555}
+.footer a{color:#27ae60;text-decoration:none}
 </style></head><body>
-<div class='top'>
-<h1>&#127793; Cultivee Hidroponia</h1>
-<p>Controle e Monitoramento</p>
-</div>
-
+<div class='top'><div class='logo'>C</div><div><h1>CULTIVEE</h1><p>Hidroponia Inteligente</p></div></div>
 <div class='card'>
 <div class='grid'>
-<div class='stat'><div class='label'>Ciclo</div><div class='value'>Dia )rawliteral" + String(cycleDay) + R"rawliteral(</div></div>
-<div class='stat'><div class='label'>Fase</div><div class='value' style='font-size:1.1rem'>)rawliteral" + String(p->name) + R"rawliteral(</div></div>
-<div class='stat'><div class='label'>Horario</div><div class='value' style='font-size:1.1rem'>)rawliteral" + String(timeStr) + R"rawliteral(</div></div>
-<div class='stat'><div class='label'>Status</div>
-<div class='status-row'>
-<span class='btn )rawliteral" + String(lightState ? "btn-on" : "btn-gray") + R"rawliteral(' onclick="cmd('light','toggle')">LUZ</span>
-<span class='btn )rawliteral" + String(pumpState ? "btn-on" : "btn-gray") + R"rawliteral(' onclick="cmd('pump','toggle')">BOMBA</span>
+<div class='stat'><div class='lb'>Ciclo</div><div class='vl'>Dia )rawliteral" + String(cycleDay) + R"rawliteral(</div></div>
+<div class='stat'><div class='lb'>Fase</div><div class='vl' style='font-size:1rem'>)rawliteral" + String(p->name) + R"rawliteral(</div></div>
+<div class='stat'><div class='lb'>Inicio</div><div class='vl' style='font-size:0.9rem'>)rawliteral" + String(startDateFmt) + R"rawliteral(</div></div>
+<div class='stat'><div class='lb'>Hoje</div><div class='vl' style='font-size:0.9rem'>)rawliteral" + String(todayStr) + R"rawliteral(</div></div>
 </div>
-<div style='font-size:0.75rem;color:#888'>)rawliteral" + String(modeAuto ? "Automatico" : "Manual") + R"rawliteral(</div>
-</div>
-</div>
+<div class='ind'>)rawliteral" + lightIndicator + pumpIndicator + R"rawliteral(</div>
+)rawliteral" + modeBtn + manualBtns + R"rawliteral(
 </div>
 
-<div class='card' style='padding:8px 10px'>
-<div class='progress'>)rawliteral" + progressBar + R"rawliteral(</div>
-</div>
-
-<div style='margin:10px;display:flex;gap:8px'>
-<a href='/config' class='btn btn-outline' style='flex:1'>&#9881; Configurar</a>
-<span class='btn )rawliteral" + String(modeAuto ? "btn-outline" : "btn-on") + R"rawliteral(' style='flex:1' onclick="cmd('mode','toggle')">)rawliteral" + String(modeAuto ? "Manual" : "Automatico") + R"rawliteral(</span>
-</div>
-
-<div style='margin:0 10px'><h3 style='margin:10px 0;font-size:0.95rem'>Fases Configuradas</h3>
+<div class='card'><h3 style='font-size:0.9rem;margin-bottom:8px'>Fases Configuradas
+<a href='/config' style='float:right;color:#27ae60;font-size:0.8rem;text-decoration:none'>&#9881; Configurar</a></h3>
 )rawliteral" + phasesHtml + R"rawliteral(</div>
 
-<div class='footer'>Cultivee Hidroponia v1.0 | )rawliteral" + WiFi.localIP().toString() + R"rawliteral(</div>
-
+<div class='footer'>
+<a href='/setup-wifi'>&#9881; Configurar WiFi</a> &nbsp;|&nbsp; Cultivee Hidroponia v1.0.1
+</div>
 <script>
-function cmd(device, action) {
-  fetch('/relay?device=' + device + '&action=' + action)
-    .then(() => setTimeout(() => location.reload(), 300));
-}
-setInterval(() => location.reload(), 10000);
+function cmd(d,a){fetch('/relay?device='+d+'&action='+a).then(()=>setTimeout(()=>location.reload(),300))}
+setInterval(()=>location.reload(),10000);
 </script>
 </body></html>)rawliteral";
 
@@ -1093,6 +1126,10 @@ function onSubmit(){
 <input type='checkbox' style='width:22px;height:22px;accent-color:#27ae60;flex-shrink:0' onclick="document.getElementById('pass').type=this.checked?'text':'password'"> Mostrar senha</label>
 <button type='submit' id='btn'>Conectar</button>
 </form>
+<div style='margin-top:16px;padding-top:16px;border-top:1px solid #eee'>
+<a href='/skip-wifi' style='display:block;padding:12px;background:#f8f9fa;color:#666;border:1px solid #ddd;border-radius:10px;font-size:0.9rem;font-weight:600;text-decoration:none;text-align:center;transition:all 0.2s'>Usar sem WiFi</a>
+<p style='color:#aaa;font-size:0.75rem;margin-top:6px'>Controle local via rede Cultivee-Hidro</p>
+</div>
 <div class='loading' id='loading'>
 <div class='spinner'></div>
 <div class='loading-text'>Salvando configuracao...</div>
@@ -1232,6 +1269,14 @@ void handleResetWiFi() {
   ESP.restart();
 }
 
+void handleSkipWiFi() {
+  // Muda para modo offline (AP continua ativo, dashboard acessivel)
+  currentMode = MODE_OFFLINE;
+  Serial.println("Modo sem WiFi — controle local via AP");
+  server.sendHeader("Location", "/");
+  server.send(302);
+}
+
 // Portal cativo redirects (handlers por OS — igual ESP32-CAM)
 void handleCaptiveAndroid() {
   Serial.println("Portal cativo: Android detectado");
@@ -1295,48 +1340,63 @@ void setup() {
         MDNS.addService("http", "tcp", 80);
       }
     } else {
-      // WiFi falhou mas NAO limpa credenciais — entra em offline
-      // Automacao continua rodando, reconexao em background
+      // WiFi falhou — AP ja esta ativo (startAP chamado em connectWiFi)
       currentMode = MODE_OFFLINE;
-      Serial.println("WiFi falhou, modo OFFLINE — automacao ativa, reconexao em background");
+      Serial.println("WiFi falhou, modo OFFLINE — AP ativo, automacao continua");
     }
   } else {
-    // Sem credenciais salvas — precisa configurar
-    startSetupAP();
+    // Sem credenciais — modo setup
+    startSetupMode();
   }
 
-  // Web server routes — OFFLINE tambem precisa das rotas de controle
-  if (currentMode == MODE_SETUP) {
-    server.on("/", handleSetupPage);
-    server.on("/save-wifi", HTTP_POST, handleSaveWiFi);
-    // Captive portal - handlers por OS (igual ESP32-CAM)
-    server.on("/generate_204", handleCaptiveAndroid);
-    server.on("/gen_204", handleCaptiveAndroid);
-    server.on("/connectivitycheck/gstatic/com", handleCaptiveAndroid);
-    server.on("/hotspot-detect.html", handleCaptiveApple);
-    server.on("/library/test/success.html", handleCaptiveApple);
-    server.on("/captive-portal/api/session", handleCaptiveApple);
-    server.on("/connecttest.txt", handleCaptiveWindows);
-    server.on("/ncsi.txt", handleCaptiveWindows);
-    server.on("/fwlink", handleCaptiveWindows);
-    server.on("/redirect", handleCaptiveWindows);
-    server.on("/canonical.html", handleCaptiveGeneric);
-    server.on("/success.txt", handleCaptiveGeneric);
-    server.on("/generate204", handleCaptiveGeneric);
-    server.on("/mobile/status.php", handleCaptiveGeneric);
-    server.onNotFound(handleCaptiveGeneric);
-  } else {
-    server.on("/", handleDashboard);
-    server.on("/config", handleConfig);
-    server.on("/save-config", HTTP_POST, handleSaveConfig);
-    server.on("/relay", handleRelay);
-    server.on("/gpio", handleGpio);
-    server.on("/status", handleStatus);
-    server.on("/reset-wifi", handleResetWiFi);
-    server.on("/add-phase", handleAddPhase);
-    server.on("/remove-phase", handleRemovePhase);
-    server.on("/reset-phases", handleResetPhases);
-  }
+  // Web server — TODAS as rotas registradas sempre
+  // Rota raiz dinamica: setup page ou dashboard conforme modo
+  server.on("/", []() {
+    if (currentMode == MODE_SETUP) {
+      handleSetupPage();
+    } else {
+      handleDashboard();
+    }
+  });
+
+  // Rotas de setup WiFi (sempre disponiveis para reconfigurar)
+  server.on("/save-wifi", HTTP_POST, handleSaveWiFi);
+  server.on("/setup-wifi", handleSetupPage);  // acesso direto a pagina de config WiFi
+  server.on("/skip-wifi", handleSkipWiFi);    // usar sem WiFi
+
+  // Rotas de controle hidroponia
+  server.on("/config", handleConfig);
+  server.on("/save-config", HTTP_POST, handleSaveConfig);
+  server.on("/relay", handleRelay);
+  server.on("/gpio", handleGpio);
+  server.on("/status", handleStatus);
+  server.on("/reset-wifi", handleResetWiFi);
+  server.on("/add-phase", handleAddPhase);
+  server.on("/remove-phase", handleRemovePhase);
+  server.on("/reset-phases", handleResetPhases);
+
+  // Captive portal — redireciona para / (so funciona em MODE_SETUP)
+  server.on("/generate_204", handleCaptiveAndroid);
+  server.on("/gen_204", handleCaptiveAndroid);
+  server.on("/connectivitycheck/gstatic/com", handleCaptiveAndroid);
+  server.on("/hotspot-detect.html", handleCaptiveApple);
+  server.on("/library/test/success.html", handleCaptiveApple);
+  server.on("/captive-portal/api/session", handleCaptiveApple);
+  server.on("/connecttest.txt", handleCaptiveWindows);
+  server.on("/ncsi.txt", handleCaptiveWindows);
+  server.on("/fwlink", handleCaptiveWindows);
+  server.on("/redirect", handleCaptiveWindows);
+  server.on("/canonical.html", handleCaptiveGeneric);
+  server.on("/success.txt", handleCaptiveGeneric);
+  server.on("/generate204", handleCaptiveGeneric);
+  server.on("/mobile/status.php", handleCaptiveGeneric);
+  server.onNotFound([]() {
+    if (currentMode == MODE_SETUP) {
+      handleCaptiveGeneric();
+    } else {
+      server.send(404, "text/plain", "Not found");
+    }
+  });
 
   server.begin();
   Serial.println("Web server iniciado");
@@ -1381,11 +1441,11 @@ void handleSerialCommands() {
 
 void tryReconnectWiFi() {
   if (currentMode != MODE_OFFLINE) return;
+  if (savedSSID.length() == 0) return;  // Sem credenciais (modo sem WiFi)
   if (millis() - lastWiFiRetry < WIFI_RETRY_INTERVAL) return;
   lastWiFiRetry = millis();
 
   Serial.println("Tentando reconectar WiFi...");
-  WiFi.mode(WIFI_STA);
   WiFi.begin(savedSSID.c_str(), savedPass.c_str());
 
   // Non-blocking: tenta por 5s apenas
@@ -1419,9 +1479,8 @@ void loop() {
   checkResetButton();
   handleSerialCommands();
 
-  if (currentMode == MODE_SETUP) {
-    dnsServer.processNextRequest();
-  }
+  // DNS server roda sempre (AP sempre ativo)
+  dnsServer.processNextRequest();
 
   server.handleClient();
   updateStatusLed();

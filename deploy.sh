@@ -41,6 +41,23 @@ if [ "$COMPONENT" = "server" ] || [ "$COMPONENT" = "all" ]; then
     $SSH_CMD "cd $REMOTE_DIR && tar xzf /tmp/cultivee-server.tar.gz && rm /tmp/cultivee-server.tar.gz"
 fi
 
+if [ "$COMPONENT" = "ctrl" ] || [ "$COMPONENT" = "all" ]; then
+    echo "-> Empacotando server-ctrl..."
+    cd "$PROJECT_DIR"
+    tar czf /tmp/cultivee-ctrl.tar.gz \
+        --exclude='*.db' \
+        --exclude='data/' \
+        --exclude='__pycache__/' \
+        --exclude='.env' \
+        server-ctrl/app.py server-ctrl/models.py \
+        server-ctrl/requirements.txt server-ctrl/Dockerfile \
+        server-ctrl/static/ 2>/dev/null
+
+    echo "-> Enviando server-ctrl para VPS..."
+    $SCP_CMD /tmp/cultivee-ctrl.tar.gz "$VPS_USER@$VPS_HOST:/tmp/"
+    $SSH_CMD "cd $REMOTE_DIR && tar xzf /tmp/cultivee-ctrl.tar.gz && rm /tmp/cultivee-ctrl.tar.gz"
+fi
+
 if [ "$COMPONENT" = "site" ] || [ "$COMPONENT" = "all" ]; then
     echo "-> Empacotando site..."
     cd "$PROJECT_DIR"

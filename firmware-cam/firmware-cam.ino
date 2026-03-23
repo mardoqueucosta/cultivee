@@ -5,6 +5,15 @@
 */
 
 #include "config.h"
+
+// Protecao contra configuracao errada
+#if !defined(ENV_LOCAL) && !defined(ENV_PRODUCTION)
+  #error "Defina ENV_LOCAL ou ENV_PRODUCTION em config.h"
+#endif
+#if defined(ENV_LOCAL) && defined(ENV_PRODUCTION)
+  #error "Defina APENAS um: ENV_LOCAL ou ENV_PRODUCTION em config.h"
+#endif
+
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <WebServer.h>
@@ -45,7 +54,7 @@
 #define RESET_HOLD_TIME   3000      // Segurar 3s para resetar WiFi
 
 // --- Configuracao ---
-#define AP_SETUP_SSID     "Cultivee-Setup"
+#define AP_SETUP_SSID     "Cultivee-Cam"
 #define AP_SETUP_PASS     "12345678"
 #define AP_OFFLINE_SSID   "Cultivee-Cam"
 #define AP_OFFLINE_PASS   "12345678"

@@ -36,8 +36,30 @@ services:
       - "traefik.http.routers.cultivee-app-http.entrypoints=web"
       - "traefik.http.services.cultivee-app.loadbalancer.server.port=5000"
 
+  ctrl:
+    build:
+      context: ./server-ctrl
+      dockerfile: Dockerfile
+    container_name: cultivee-ctrl
+    restart: unless-stopped
+    environment:
+      - DB_PATH=/app/data/cultivee-ctrl.db
+    volumes:
+      - cultivee-ctrl-data:/app/data
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cultivee-ctrl.rule=Host(`hidro.cultivee.com.br`)"
+      - "traefik.http.routers.cultivee-ctrl.entrypoints=websecure"
+      - "traefik.http.routers.cultivee-ctrl.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.cultivee-ctrl-http.rule=Host(`hidro.cultivee.com.br`)"
+      - "traefik.http.routers.cultivee-ctrl-http.entrypoints=web"
+      - "traefik.http.services.cultivee-ctrl.loadbalancer.server.port=5002"
+
 volumes:
   cultivee-data:
+  cultivee-ctrl-data:
 
 networks:
   web:

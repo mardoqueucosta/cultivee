@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hidroponia-ctrl",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["app.py"],
+      "port": 5002,
+      "cwd": "D:/01-projetos-claude/cultivee/server-ctrl"
+    }
+  ]
+}

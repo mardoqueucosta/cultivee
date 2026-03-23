@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Leaf, ChevronDown, LayoutDashboard, Download } from "lucide-react";
+import { Menu, X, Leaf, ChevronDown, LayoutDashboard, Download, Camera, Droplets } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import {
   DropdownMenu,
@@ -126,18 +126,29 @@ const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <a href="https://app.cultivee.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
-                <LayoutDashboard className="w-4 h-4" />
-                Meu Painel
-              </a>
-            </Button>
-            <Button variant="eco" size="sm" asChild>
-              <a href="https://app.cultivee.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
-                <Download className="w-4 h-4" />
-                Baixar App
-              </a>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5">
+                  <LayoutDashboard className="w-4 h-4" />
+                  Meu Painel
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 bg-background border-border">
+                <DropdownMenuItem asChild>
+                  <a href="https://app.cultivee.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                    <Camera className="w-4 h-4" />
+                    Camera
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <a href="https://hidro.cultivee.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                    <Droplets className="w-4 h-4" />
+                    Hidroponia
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Mobile menu button */}
@@ -215,20 +226,33 @@ const Navbar = () => {
                 Contato
               </Link>
               
-              <div className="pt-2 flex flex-col gap-2">
-                <Button variant="outline" className="w-full" asChild>
-                  <a href="https://app.cultivee.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
-                    <LayoutDashboard className="w-4 h-4" />
-                    Meu Painel
-                  </a>
-                </Button>
-                <Button variant="eco" className="w-full" asChild>
-                  <a href="https://app.cultivee.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5">
-                    <Download className="w-4 h-4" />
-                    Baixar App
-                  </a>
-                </Button>
+              <div className="border-t border-border my-2"></div>
+
+              <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Meu Painel
               </div>
+
+              <a
+                href="https://app.cultivee.com.br"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-3 rounded-lg font-medium transition-colors text-foreground hover:bg-muted flex items-center gap-2"
+                onClick={() => setIsOpen(false)}
+              >
+                <Camera className="w-4 h-4" />
+                Camera
+              </a>
+
+              <a
+                href="https://hidro.cultivee.com.br"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-3 rounded-lg font-medium transition-colors text-foreground hover:bg-muted flex items-center gap-2"
+                onClick={() => setIsOpen(false)}
+              >
+                <Droplets className="w-4 h-4" />
+                Hidroponia
+              </a>
             </div>
           </div>
         )}

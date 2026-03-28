@@ -1,346 +1,375 @@
-# Cultivee - Sistema IoT de Monitoramento
+# Cultivee - Plataforma IoT de Monitoramento
 
 ## Visao Geral
-Sistema completo de monitoramento de plantas via IoT. O usuario conecta um modulo ESP32-CAM ao WiFi, e monitora suas plantas em tempo real pelo celular ou computador.
+Plataforma Cultivee com dois subprojetos independentes no mesmo monorepo.
+Cada subprojeto tem firmware, servidor e app proprios. Nao misturar.
 
 ## Estrutura do Monorepo
 ```
 cultivee/
-├── site/               # cultivee.com.br - Landing page (React + Vite + shadcn/ui)
-├── server/             # app.cultivee.com.br - Dashboard + API + PWA (Flask + SQLite)
-│   ├── app.py          # Rotas da API e dashboard
-│   ├── models.py       # Banco de dados SQLite (users, modules, tokens)
-│   ├── static/         # Frontend do dashboard (HTML/CSS/JS puro)
-│   │   ├── index.html  # SPA do dashboard
-│   │   ├── app.js      # Logica do app (auth, modulos, live, carousel, PWA install)
-│   │   ├── style.css   # Estilos
-│   │   ├── sw.js       # Service Worker (cache offline)
-│   │   └── manifest.json # PWA manifest
-│   ├── Dockerfile      # Python 3.10 + gunicorn
-│   └── requirements.txt
-├── firmware-cam/       # ESP32-CAM (captura e envia imagens)
-│   ├── firmware-cam.ino # Firmware principal
-│   ├── config.h        # Configuracao de ambiente (LOCAL/PRODUCTION)
-│   └── ble_setup.h     # BLE setup (desabilitado no ESP32-CAM, pronto para WROVER)
-├── firmware-ctrl/      # ESP32-WROOM (controle LEDs/bombas - futuro)
+├── site/               # cultivee.com.br - Landing page (compartilhado)
+│
+│── ── HIDRO (foco ativo) ─────────────────────────────
+├── firmware-ctrl/      # Firmware ESP32-WROOM (reles luz/bomba, fases)
+│   ├── firmware-ctrl.ino
+│   └── config.h        # ENV_LOCAL / ENV_PRODUCTION
+├── server-ctrl/        # hidro.cultivee.com.br
+│   ├── app.py          # API Flask
+│   ├── models.py       # SQLite (users, modules, commands)
+│   └── static/         # App/PWA (frontend instalavel no celular)
+│       ├── index.html
+│       ├── app.js
+│       ├── style.css
+│       ├── sw.js
+│       └── manifest.json
+│
+│── ── CAM (projeto separado) ─────────────────────────
+├── firmware-cam/       # Firmware ESP32-CAM AI-Thinker
+│   ├── firmware-cam.ino
+│   └── config.h
+├── firmware-wrover/    # Firmware ESP32-WROVER (alternativa)
+│   ├── firmware-wrover.ino
+│   └── config.h
+├── server/             # app.cultivee.com.br
+│   ├── app.py
+│   ├── models.py
+│   └── static/         # App/PWA
+│
+│── ── HIDRO-CAM ──────────────────────────────────────
+├── firmware-hidro-cam/ # Firmware ESP32 HidroCam (cópia do Hidro + camera)
+│   ├── firmware-hidro-cam.ino
+│   └── config.h
+├── server-hidro-cam/   # hidro-cam.cultivee.com.br
+│   ├── app.py
+│   ├── models.py
+│   └── static/         # App/PWA
+│
+│── ── Compartilhado ──────────────────────────────────
 ├── docker-compose.yml  # Containers de producao (FONTE DA VERDADE)
 ├── deploy.sh           # Script de deploy para VPS
-└── CLAUDE.md           # ESTE ARQUIVO - referencia completa
+└── CLAUDE.md           # ESTE ARQUIVO
 ```
 
-## URLs e Repositorio
-- **Repo:** https://github.com/mardoqueucosta/cultivee (branch: main)
-- **Site:** https://cultivee.com.br (landing page)
-- **App:** https://app.cultivee.com.br (dashboard PWA)
-- **PWA:** O app "para baixar" E o server/ - mesma coisa. Nao existe app nativo separado.
+## IMPORTANTE: Coesao dos subprojetos
+Cada subprojeto (Hidro, Hidro-cam ou Cam) tem 3 componentes que devem ser atualizados juntos:
+1. **Firmware** — codigo do ESP32
+2. **Servidor/API** — backend Flask no VPS
+3. **App/PWA** — frontend (static/) no mesmo servidor
 
-## Git
-- user.name: Mardoqueu Costa
-- user.email: mardo.abc@gmail.com
+**Regra:** quando uma mudanca impactar mais de um componente, atualizar TODOS juntos.
+Firmware via USB, servidor+app via deploy.sh.
 
-## Como Tudo Se Conecta
-```
-[ESP32-CAM] --HTTP porta 80--> [Traefik] --> [Flask container]
-[Navegador] --HTTPS porta 443-> [Traefik] --> [Flask container]
-[cultivee.com.br] --HTTPS------> [Traefik] --> [Nginx container (site)]
-```
+---
 
-O ESP32 NAO suporta HTTPS (sem RAM). Por isso o Traefik tem DOIS routers para o app:
-- `cultivee-app` (entrypoint: websecure/443) - para navegadores
-- `cultivee-app-http` (entrypoint: web/80) - para ESP32
+## Projeto HIDRO (foco ativo)
 
-## Infraestrutura VPS
-- **IP:** 129.121.50.168
-- **SSH:** `ssh -i "D:/01-projetos-claude/id_rsa" -p 22022 root@129.121.50.168`
-- **SO:** Ubuntu 24.04
-- **Stack:** Docker + Traefik (proxy reverso + SSL Let's Encrypt)
-- **Traefik config:** /opt/traefik/config/traefik.yml
-- **Sites:** /opt/sites/cultivee/
+### URLs
+- **App:** https://hidro.cultivee.com.br (dashboard PWA)
+- **ESP32 local:** http://192.168.4.1 (interface via rede Cultivee-Hidro)
 
-### Docker (NAO alterar sem atualizar o repo)
-- `DB_PATH=/app/data/cultivee.db` (dentro do volume cultivee-data)
-- `DATA_DIR=/app/data/images` (dentro do volume cultivee-data)
-- Volume `cultivee-data` montado em `/app/data` (persiste DB + imagens entre deploys)
-- **IMPORTANTE:** docker-compose.yml do REPOSITORIO e a fonte da verdade. NUNCA editar diretamente no servidor.
-
-### Outros servidores no mesmo VPS
-- engenhariabiomedica.com (Node.js)
-- Outros sites em /opt/sites/
-
-### VPS secundario (NAO usar para Cultivee)
-- **IP:** 129.121.51.237 (porta 22022) - Moodle EAD
-- **SSH key:** mesma id_rsa
-
-## DNS (Cloudflare)
-- **Conta:** mardo.abc@gmail.com
-- **Zone ID:** 1108abb21ad72aca86db5e0fcdd389ea
-- **API Token:** salvar em local seguro (nao commitar)
-- **SSL:** Full mode (Cloudflare -> Traefik com Let's Encrypt)
-- **Nameservers:** ben.ns.cloudflare.com, pola.ns.cloudflare.com
-- cultivee.com.br -> A record -> 129.121.50.168 (proxied)
-- app.cultivee.com.br -> A record -> 129.121.50.168 (DNS only, para Let's Encrypt funcionar)
-
-## Deploy
-
-### Comando de deploy
-```bash
-bash D:/01-projetos-claude/cultivee/deploy.sh          # deploy completo (site + server)
-bash D:/01-projetos-claude/cultivee/deploy.sh server    # so o server/app
-bash D:/01-projetos-claude/cultivee/deploy.sh site      # so o site
-```
-
-### Fluxo completo de deploy
-1. Fazer as alteracoes no codigo
-2. `git add` + `git commit` + `git push origin main`
-3. `bash deploy.sh [server|site|all]`
-
-O script deploy.sh automaticamente:
-- Envia docker-compose.yml atualizado (evita inconsistencias)
-- Empacota arquivos (exclui node_modules, dist, data, *.db)
-- Envia via SCP e extrai no servidor
-- Reconstroi containers Docker
-- Verifica saude dos containers
-
-### Erros comuns de deploy
-- **404 page not found:** DB_PATH errado. Verificar docker-compose.yml: DB_PATH deve ser `/app/data/cultivee.db`
-- **Container reiniciando:** Verificar logs: `docker logs cultivee-app --tail 30`
-- **ESP32 nao conecta:** Verificar se router HTTP esta no docker-compose (entrypoint: web)
-
-## Firmware ESP32-CAM
-
-### Hardware atual
-- **Placa:** ESP32-CAM AI-Thinker (520KB RAM, 4MB Flash)
-- **Sensor:** OV2640 (clone, tom verde/rosa - mitigado com wb_mode=1, saturacao=-1)
-- **USB:** CH340 via adaptador, porta COM9
-- **Board Arduino:** esp32:esp32:esp32cam
-
-### Hardware futuro planejado
-- **ESP32-WROVER-DEV** (8MB PSRAM) - suporta BLE + WiFi + Camera simultaneos
-
-### Compilar e gravar
-```bash
-# Compilar
-"C:/Users/user/arduino-cli/arduino-cli.exe" compile --fqbn esp32:esp32:esp32cam "D:/01-projetos-claude/cultivee/firmware-cam"
-
-# Gravar (COM9)
-"C:/Users/user/arduino-cli/arduino-cli.exe" upload --fqbn esp32:esp32:esp32cam -p COM9 "D:/01-projetos-claude/cultivee/firmware-cam"
-```
-
-### Ambiente local vs producao (config.h)
-```c
-// Para testar localmente (ESP32 -> PC):
-#define ENV_LOCAL
-// #define ENV_PRODUCTION
-
-// Para producao (ESP32 -> VPS):
-// #define ENV_LOCAL
-#define ENV_PRODUCTION
-```
-
-- `SERVER_URL` = onde o ESP32 envia dados (muda conforme ambiente)
-- `APP_URL` = link para o usuario (SEMPRE https://app.cultivee.com.br)
-- Producao usa HTTP (Traefik faz SSL termination)
-
-### Quando o usuario pedir "rode local" / "teste local":
-1. Em config.h: ativar `ENV_LOCAL`, verificar LOCAL_SERVER_IP (rodar `ipconfig`)
-2. Compilar e gravar firmware
-3. Iniciar servidor Flask local: `python server/app.py` ou preview_start
-
-### Quando o usuario pedir "deploy" / "producao":
-1. Em config.h: ativar `ENV_PRODUCTION`
-2. Compilar e gravar firmware
-3. Commitar e push
-4. `bash deploy.sh`
-
-### Funcionalidades do firmware
-- **WiFi Manager:** AP aberto "Cultivee-Setup" com portal cativo (DNS redirect)
-- **Portal cativo:** Endpoints especificos para Android/iOS/Windows/macOS
-- **Auto-registro:** POST a cada 30s em /api/modules/register (chip_id, IP, SSID, RSSI)
-- **Live stream:** Envia frame VGA a cada 3s via POST /api/modules/live
-- **Captura:** Envia imagem VGA a cada N segundos (configuravel) via POST /api/modules/upload
-- **Botao reset WiFi:** GPIO13 pressionado por 3s limpa credenciais e reinicia
-- **LED status:** Pisca rapido=Setup, Pulsa=Conectado, 3 piscas=Sem WiFi
-- **Camera:** VGA 640x480 fixo, quality 12, 1 frame buffer, vflip+hmirror
-
-### Resolucao da camera
-- Atualmente VGA 640x480 (estavel para WiFi fraco)
-- UXGA 1600x1200 disponivel mas instavel com WiFi fraco e troca de resolucao causa corrupcao de cor
-- Na ESP32-WROVER futura: pode usar UXGA sem problemas
-
-## API do Servidor (Flask)
-
-### Autenticacao
-- `POST /api/auth/register` - {name, email, password} -> {token, user}
-- `POST /api/auth/login` - {email, password} -> {token, user}
-- Token via header `Authorization: Bearer <token>` ou query `?token=<token>`
-
-### Modulos
-- `POST /api/modules/register` - ESP32 se registra (chip_id, ip, ssid, rssi)
-- `POST /api/modules/pair` - Vincular modulo ao usuario (code, name)
-- `POST /api/modules/unpair` - Desvincular modulo
-- `GET /api/modules/list` - Listar modulos do usuario
-- `GET /api/modules/config?chip_id=X` - Buscar config (capture_interval)
-- `POST /api/modules/config` - Salvar config (chip_id, capture_interval)
-
-### Imagens
-- `POST /api/modules/upload?chip_id=X` - ESP32 envia imagem (salva no historico)
-- `POST /api/modules/live?chip_id=X` - ESP32 envia frame live (sobrescreve latest.jpg)
-- `GET /api/live/<chip_id>` - Servir ultimo frame live
-- `GET /api/images/<chip_id>` - Listar imagens salvas
-- `GET /api/images/<path>` - Servir imagem
-
-### Dashboard
-- `GET /` - Pagina principal (SPA)
-- `GET /sw.js` - Service Worker (servido na raiz para escopo correto)
-
-## App/PWA (server/static/)
-
-### Versionamento
-A versao do app esta definida em DOIS lugares (manter sincronizados):
-1. `server/static/app.js` -> `const APP_VERSION = '1.0.0';`
-2. `server/static/sw.js` -> `const APP_VERSION = '1.0.0';`
-
-**Ao fazer deploy com mudancas no app, SEMPRE incrementar a versao nos dois arquivos.**
-Formato: MAJOR.MINOR.PATCH (ex: 1.0.0 -> 1.0.1 para fix, 1.1.0 para feature, 2.0.0 para breaking)
-
-O Service Worker detecta a mudanca de versao e notifica o usuario com um banner:
-"Nova versao disponivel (v1.0.1) - Atualizar"
-
-A versao aparece no footer do app: "Cultivee v1.0.0"
-
-### Funcionalidades
-- Login/registro de usuarios
-- Card do modulo: status online/offline, SSID, sinal WiFi, uptime, IP
-- Quando offline: instrucoes passo a passo para conectar
-- Monitoramento ao vivo (atualiza frame a cada 3s)
-- Carousel de ultimas capturas com paginacao
-- Intervalo de captura configuravel (dropdown: 10s a 1h)
-- Modal de setup guiado (wizard 4 passos)
-- Banner de instalacao PWA (Android/Chrome nativo, iOS manual)
-- Banner de atualizacao quando nova versao disponivel
-- Service Worker com cache offline e verificacao de updates a cada 30min
-
-### Arquivos
-- `index.html` - HTML completo (SPA, sem framework)
-- `app.js` - Toda logica JS (APP_VERSION definido aqui)
-- `style.css` - Estilos
-- `sw.js` - Service Worker (APP_VERSION definido aqui, CACHE_NAME usa a versao)
-- `manifest.json` - PWA manifest
-
-## Site (site/)
-
-### Stack
-- React 18 + TypeScript
-- Vite (build)
-- Tailwind CSS + shadcn/ui
-- React Router
-
-### Paginas
-- Home, Agro, Educa, Tech, Blog, Sobre, Contato
-
-### Navbar
-- Links: Home, Cursos (dropdown), Blog, Sobre, Contato
-- Botoes: "Meu Painel" (outline) + "Baixar App" (verde) -> ambos linkam para app.cultivee.com.br
-
-### Build e preview local
-```bash
-cd cultivee/site
-npm install
-npm run dev    # porta 5173
-npm run build  # gera dist/
-```
-
-## Problemas Conhecidos e Solucoes
-
-| Problema | Causa | Solucao |
-|----------|-------|---------|
-| Imagem verde/rosa | Sensor OV2640 clone | wb_mode=1 (Sunny), saturacao=-1 |
-| ESP32 nao aparece como AP | Credenciais WiFi antigas salvas | Botao GPIO13 por 3s ou clearWiFiCredentials() |
-| Portal cativo nao abre | Android/iOS nao detecta | Melhorados endpoints por SO, fallback: acessar 192.168.4.1 |
-| Live lento/falhando | WiFi fraco, distancia do roteador | VGA fixo, quality 12, intervalo 3s |
-| 404 apos deploy | DB_PATH errado no docker-compose | DB_PATH=/app/data/cultivee.db (dentro do volume) |
-| ESP32 nao registra no VPS | Traefik sem router HTTP | Adicionado cultivee-app-http entrypoint web |
-| Troca resolucao = cores corrompidas | Buffer do sensor corrompido | Resolucao VGA fixa, sem trocar em runtime |
-
-## Checklist de Mudancas
-
-### Se alterar o server/ (API, dashboard, estilos):
-1. Testar localmente (python app.py ou preview_start)
-2. git add + commit + push
-3. `bash deploy.sh server`
-
-### Se alterar o site/ (landing page):
-1. Testar localmente (npm run dev)
-2. git add + commit + push
-3. `bash deploy.sh site`
-
-### Se alterar o firmware-cam/:
-1. Verificar config.h (ENV_LOCAL ou ENV_PRODUCTION?)
-2. Compilar com arduino-cli
-3. Gravar via COM9
-4. Testar (verificar Serial Monitor se necessario)
-5. git add + commit + push (deploy.sh NAO grava firmware)
-
-### Se alterar docker-compose.yml:
-1. Editar no REPOSITORIO (nunca no servidor)
-2. git add + commit + push
-3. `bash deploy.sh` (qualquer variante envia o docker-compose.yml)
-
-## Sistema Hidroponia (firmware-ctrl/)
-
-### Hardware
-- **Placa:** ESP32-WROOM-32D (HW-394) com placa expansao bornes parafuso
+### Hardware ESP32-WROOM-32D
+- **Placa:** HW-394 com placa expansao bornes parafuso
 - **Porta:** COM7
 - **Board Arduino:** esp32:esp32:esp32doit-devkit-v1
+- **Flash:** ~89% usado
 - **Rele:** Modulo 2 canais 5V (JQC3F-5VDC-C) com optoacoplador PC817
-  - IN1 -> GPIO4 (Lampada)
-  - IN2 -> GPIO5 (Bomba)
-  - VCC -> VIN (5V), GND compartilhado, jumper RY-VCC mantido
+  - IN1 → GPIO4 (Lampada), IN2 → GPIO5 (Bomba)
+  - VCC → VIN (5V), GND compartilhado, jumper RY-VCC mantido
+- **Reles ativos em LOW** (RELE_ON = LOW, RELE_OFF = HIGH)
+- **Botao BOOT (GPIO0):** segurar 3s = reset WiFi
+- **LED onboard:** GPIO2
 
-### Compilar e gravar
+### Compilar e gravar firmware
 ```bash
 # Compilar
 "C:/Users/user/arduino-cli/arduino-cli.exe" compile --fqbn esp32:esp32:esp32doit-devkit-v1 "D:/01-projetos-claude/cultivee/firmware-ctrl"
 
-# Gravar (COM7)
+# Gravar
 "C:/Users/user/arduino-cli/arduino-cli.exe" upload --fqbn esp32:esp32:esp32doit-devkit-v1 -p COM7 "D:/01-projetos-claude/cultivee/firmware-ctrl"
 ```
 
-### Servidor de desenvolvimento
+### Ambiente (config.h)
+```c
+// Para testar localmente:
+#define ENV_LOCAL
+// #define ENV_PRODUCTION
+
+// Para producao (VPS):
+// #define ENV_LOCAL
+#define ENV_PRODUCTION
+```
+- `SERVER_URL` muda conforme ambiente (local: http://IP:5002, producao: http://hidro.cultivee.com.br)
+- ESP32 envia via HTTP (sem RAM para SSL)
+
+### Funcionalidades do firmware
+- **WiFi AP hibrido:** modo AP_STA, rede "Cultivee-Hidro" sempre ativa (192.168.4.1)
+- **Portal cativo:** redireciona Android/iOS/Windows para pagina de config WiFi
+- **Auto-registro:** POST a cada 10s em /api/ctrl/register (chip_id, IP, status)
+- **Fases configuraveis:** nome, duracao, horario luz, irrigacao dia/noite
+- **Controle automatico:** baseado em fase atual + horario NTP
+- **Modo manual:** liga/desliga reles via interface web
+- **Dashboard local:** 192.168.4.1 com status, botoes, fases (update DOM sem reload)
+- **Pagina config:** /config com formulario de fases e data de inicio
+- **Fila de comandos:** servidor enfileira comandos, ESP32 busca no register
+- **CORS habilitado:** Access-Control-Allow-Origin: * (permite fetch direto do browser)
+
+### API do Servidor (server-ctrl/app.py)
+
+#### Autenticacao
+- `POST /api/auth/register` → {name, email, password} → {token, user}
+- `POST /api/auth/login` → {email, password} → {token, user}
+- Token via header `Authorization: Bearer <token>`
+
+#### Modulos
+- `POST /api/ctrl/register` → ESP32 se registra (chip_id, ip, status, ctrl_data)
+- `POST /api/modules/pair` → Vincular modulo ao usuario (code, name)
+- `GET /api/modules/list` → Listar modulos do usuario
+
+#### Controle
+- `GET /api/ctrl/<chip_id>/status` → Status do modulo (do banco)
+- `GET /api/ctrl/<chip_id>/relay?device=light&action=toggle` → Controle rele (proxy + fila)
+- `GET /api/ctrl/<chip_id>/phases?live=1` → Status com fases (proxy direto ou banco)
+- `POST /api/ctrl/<chip_id>/save-config` → Salvar config de fases
+- `GET /api/ctrl/<chip_id>/add-phase` → Adicionar fase
+- `GET /api/ctrl/<chip_id>/remove-phase?idx=N` → Remover fase
+- `GET /api/ctrl/<chip_id>/reset-phases` → Restaurar fases default
+- `GET /api/ctrl/<chip_id>/reset-wifi` → Reset WiFi do ESP32
+
+### App/PWA (server-ctrl/static/)
+
+#### Versionamento
+A versao esta em DOIS arquivos (manter sincronizados):
+1. `static/app.js` → `const APP_VERSION = '1.0.1';`
+2. `static/sw.js` → `const APP_VERSION = '1.0.1';`
+
+**Ao fazer deploy com mudancas no app, SEMPRE incrementar a versao nos dois arquivos.**
+
+#### Funcionalidades
+- Login/registro de usuarios
+- Dashboard com card do modulo (online/offline)
+- Controle manual: botoes luz e bomba com update otimista
+- Visualizacao de fases (progresso, dias, config)
+- Config de fases e data de inicio
+- Wizard de setup guiado (modulo novo ou codigo existente)
+- Auto-pair via URL (?code=XXXX)
+- Deteccao de conexao real (fetch com timeout, nao navigator.onLine)
+- Tela offline com link para modo local (192.168.4.1)
+- Service Worker com cache offline
+- Banner de instalacao PWA
+- Banner de atualizacao quando nova versao disponivel
+
+### Servidor de desenvolvimento local
 ```bash
 cd D:/01-projetos-claude/cultivee/firmware-ctrl
 python server-dev.py
 # Acessa em http://localhost:5001
 ```
+O server-dev.py envia comandos serial para o ESP32 via Win32 API (ctypes, sem pyserial).
 
-O server-dev.py:
-- Serve o dashboard de hidroponia em localhost:5001
-- Envia comandos serial para o ESP32-WROOM (L1/L0/P1/P0/S) via Win32 API
-- NAO usa pyserial (usa ctypes com CreateFileW/WriteFile/ReadFile)
-- Porta serial COM7 configurada no topo do arquivo
+### Preview PWA local
+Configurado em `.claude/launch.json` com nome "hidroponia-pwa" na porta 5002.
 
-### Comunicacao serial ESP32-WROOM
-- `L1` = Liga luz, `L0` = Desliga luz
-- `P1` = Liga bomba, `P0` = Desliga bomba
-- `S` = Status (retorna JSON com estado dos reles e config)
+---
 
-### Funcionalidades implementadas
-- **Fases configuraveis:** Germinacao, Bercario, Engorda (nome, duracao, luz, irrigacao)
-- **Cada fase define:**
-  - Horario de luz (liga/desliga)
-  - Irrigacao dia (minutos on/off, enquanto luz ligada)
-  - Irrigacao noite (minutos on/off, enquanto luz desligada)
-- **Controle automatico:** baseado em fase atual + horario NTP
-- **Modo manual:** liga/desliga reles via interface web
-- **Dashboard:** status, dia do ciclo, fase ativa, progresso
-- **Pagina config:** /config com formulario para editar fases e data de inicio
-- **Design:** dark mode com cores Cultivee
+## Projeto HIDRO-CAM
 
-### Pendencias
-- Integrar ao servidor VPS (app.cultivee.com.br) em vez de localhost
-- Sensor DHT22 (temperatura/umidade) quando disponivel
-- Botao start/stop gravacao de imagens no app Cultivee
-- Testar automacao completa em ciclo real
+### URLs
+- **App:** https://hidro-cam.cultivee.com.br (dashboard PWA)
+- **ESP32 local:** http://192.168.4.1 (interface via rede Cultivee-HidroCam)
 
-### launch.json
-O preview do hidroponia esta em `.claude/launch.json` com nome "hidroponia" na porta 5001.
+### Estrutura
+Mesma arquitetura do Hidro (firmware + servidor + app/PWA), com nomes diferenciados:
+- Firmware: `firmware-hidro-cam/` (AP: Cultivee-HidroCam)
+- Servidor: `server-hidro-cam/` (porta 5003, rotas `/api/hidro-cam/`)
+- App/PWA: `server-hidro-cam/static/` (localStorage: `cultivee_hidro_cam_*`)
+- Container: `cultivee-hidro-cam` (volume: `cultivee-hidro-cam-data`)
+
+### Hardware ESP32-WROVER-DEV
+- **Placa:** ESP32-WROVER-DEV com camera OV2640
+- **Porta:** COM9
+- **Board Arduino:** esp32:esp32:esp32wroverkit
+- **Flash:** ~98% usado (apertado, otimizar antes de adicionar features)
+- **Camera:** OV2640 integrada, VGA 640x480, JPEG quality 12, 2 frame buffers (PSRAM)
+- **Reles:** GPIO 13 (Lampada), GPIO 14 (Bomba) — GPIOs livres da camera
+- **LED onboard:** GPIO 2
+- **Botao BOOT:** GPIO 0 (reset WiFi 3s)
+
+### Compilar e gravar
+```bash
+"C:/Users/user/arduino-cli/arduino-cli.exe" compile --fqbn esp32:esp32:esp32wroverkit "D:/01-projetos-claude/cultivee/firmware-hidro-cam"
+"C:/Users/user/arduino-cli/arduino-cli.exe" upload --fqbn esp32:esp32:esp32wroverkit -p COM9 "D:/01-projetos-claude/cultivee/firmware-hidro-cam"
+```
+
+### Funcionalidades da camera (firmware)
+- **`/capture`** — captura unica, retorna JPEG com CORS
+- **`/stream`** — MJPEG stream (multipart/x-mixed-replace), 600 frames ~60s, reconecta automaticamente
+- **`camera_ready`** — campo no status JSON e ctrl_data, indica se camera inicializou
+- Camera isolada do codigo de reles — pode ser removida sem afetar hidroponia
+
+### Funcionalidades da camera (servidor)
+- **`GET /api/hidro-cam/<chip_id>/capture`** — enfileira comando capture, ESP32 tira foto e envia via push
+- **`POST /api/hidro-cam/<chip_id>/upload-capture`** — ESP32 envia foto capturada (push)
+- **`GET /api/hidro-cam/<chip_id>/image/<filename>`** — serve imagem salva (requer token via query param)
+- **`GET /api/hidro-cam/<chip_id>/last-capture`** — retorna URL da ultima captura
+- Imagens salvas em `data/captures/<chip_id>/<timestamp>.jpg`
+
+### Funcionalidades da camera (app PWA)
+- Card Camera colapsavel acima do dashboard (clique para expandir)
+- Status: "Pronta" (verde) quando camera_ready=true, "Offline" (vermelho) quando nao
+- Botao Capturar: enfileira comando + polling ate imagem chegar (~3-5s)
+- Carrega ultima captura ao expandir pela primeira vez
+- Codigo isolado no bloco CAMERA MODULE — `CAMERA_ENABLED = false` desativa
+
+### Interface local (192.168.4.1)
+- Card Camera no topo, colapsavel com chevron (igual PWA)
+- Botao **Capturar** — fetch direto ao `/capture` do ESP32 (sem servidor)
+- Botao **Ao Vivo** — MJPEG stream direto (`/stream`), ~60s continuo com reconexao
+- Botao muda para "Parar" (vermelho) enquanto stream ativo
+
+### Fluxo de captura (com internet)
+```
+App (HTTPS) → servidor enfileira "capture" + marca atividade (poll=2s)
+ESP32 registra → recebe comando → tira foto → POST /upload-capture → servidor salva
+App faz polling /last-capture a cada 1.5s → imagem aparece (~3-5s total)
+```
+
+### Fluxo de captura (offline / rede local)
+```
+Browser (HTTP) → fetch direto /capture ao ESP32 → JPEG retorna → mostra na tela
+Browser (HTTP) → <img src="/stream"> → MJPEG continuo ~10fps
+```
+
+### Deploy
+```bash
+bash D:/01-projetos-claude/cultivee/deploy.sh hidro-cam
+```
+
+### Preview PWA local
+Configurado em `.claude/launch.json` com nome "hidro-cam" na porta 5003.
+
+---
+
+## Projeto CAM (separado do Hidro)
+
+### URLs
+- **App:** https://app.cultivee.com.br (dashboard PWA)
+
+### Hardware ESP32-CAM
+- **Placa:** ESP32-CAM AI-Thinker (520KB RAM, 4MB Flash)
+- **Sensor:** OV2640 (clone, tom verde/rosa - mitigado com wb_mode=1)
+- **Porta:** COM9
+- **Board Arduino:** esp32:esp32:esp32cam
+- **Botao reset WiFi:** GPIO13 (3 segundos)
+
+### Hardware ESP32-WROVER (alternativa)
+- **Placa:** ESP32-WROVER-CAM (520KB RAM, 8MB PSRAM, 4MB Flash)
+- **Board Arduino:** esp32:esp32:esp32wroverkit
+- **AP SSID:** "Cultivee-Wrover"
+
+### Compilar e gravar
+```bash
+# ESP32-CAM
+"C:/Users/user/arduino-cli/arduino-cli.exe" compile --fqbn esp32:esp32:esp32cam "D:/01-projetos-claude/cultivee/firmware-cam"
+"C:/Users/user/arduino-cli/arduino-cli.exe" upload --fqbn esp32:esp32:esp32cam -p COM9 "D:/01-projetos-claude/cultivee/firmware-cam"
+
+# ESP32-WROVER
+"C:/Users/user/arduino-cli/arduino-cli.exe" compile --fqbn esp32:esp32:esp32wroverkit "D:/01-projetos-claude/cultivee/firmware-wrover"
+"C:/Users/user/arduino-cli/arduino-cli.exe" upload --fqbn esp32:esp32:esp32wroverkit -p COM9 "D:/01-projetos-claude/cultivee/firmware-wrover"
+```
+
+---
+
+## Infraestrutura Compartilhada
+
+### VPS
+- **IP:** 129.121.50.168
+- **SSH:** `ssh -i "D:/01-projetos-claude/.credentials/id_rsa" -p 22022 root@129.121.50.168`
+- **SO:** Ubuntu 24.04
+- **Stack:** Docker + Traefik (proxy reverso + SSL Let's Encrypt)
+- **Traefik config:** /opt/traefik/config/traefik.yml
+- **Sites:** /opt/sites/cultivee/
+
+### Traefik
+- Redirect HTTP→HTTPS **removido do global** (ESP32 precisa de HTTP)
+- Redirect via middleware `https-redirect@file` aplicado individualmente nos routers do site
+- Routers HTTP sem redirect: cultivee-app-http, cultivee-ctrl-http, cultivee-hidro-cam-http (para ESP32)
+- Config dinamica: /opt/traefik/config/dynamic/redirect.yml
+
+### Docker
+- `docker-compose.yml` do REPOSITORIO e a fonte da verdade. NUNCA editar no servidor.
+- Volumes: cultivee-data (server), cultivee-ctrl-data (server-ctrl), cultivee-hidro-cam-data (server-hidro-cam)
+
+### Containers
+| Container | Servico | Porta | Dominio |
+|-----------|---------|-------|---------|
+| cultivee-site | Landing page (Nginx) | 80 | cultivee.com.br |
+| cultivee-app | API Cam (Flask) | 5000 | app.cultivee.com.br |
+| cultivee-ctrl | API Hidro (Flask) | 5002 | hidro.cultivee.com.br |
+| cultivee-hidro-cam | API HidroCam (Flask) | 5003 | hidro-cam.cultivee.com.br |
+
+### Deploy
+```bash
+bash D:/01-projetos-claude/cultivee/deploy.sh server-ctrl  # so Hidro (servidor + app)
+bash D:/01-projetos-claude/cultivee/deploy.sh hidro-cam    # so HidroCam (servidor + app)
+bash D:/01-projetos-claude/cultivee/deploy.sh server       # so Cam (servidor + app)
+bash D:/01-projetos-claude/cultivee/deploy.sh site         # so landing page
+bash D:/01-projetos-claude/cultivee/deploy.sh              # tudo
+```
+
+### Fluxo de deploy
+1. Fazer alteracoes no codigo
+2. `bash deploy.sh [server-ctrl|hidro-cam|server|site|all]`
+O script automaticamente:
+- Envia docker-compose.yml atualizado
+- Empacota arquivos (exclui node_modules, dist, data, *.db)
+- Envia via SCP e extrai no servidor
+- Reconstroi apenas o container necessario (--no-cache)
+- Verifica saude dos containers
+
+### DNS (Cloudflare)
+- **Conta:** mardo.abc@gmail.com
+- **Zone ID:** 1108abb21ad72aca86db5e0fcdd389ea
+- **Nameservers:** ben.ns.cloudflare.com, pola.ns.cloudflare.com
+- cultivee.com.br → proxied
+- app.cultivee.com.br → DNS only
+- hidro.cultivee.com.br → DNS only
+
+### VPS secundario (NAO usar para Cultivee)
+- **IP:** 129.121.51.237 (porta 22022) - Moodle EAD
+
+### Git
+- user.name: Mardoqueu Costa
+- user.email: mardo.abc@gmail.com
+
+### Arduino CLI
+- Path: `C:/Users/user/arduino-cli/arduino-cli.exe`
+
+### WiFi de teste
+- Rede: Mardo-Dri
+- Senha: mardodri1609
+
+## Checklist de Mudancas
+
+### Se alterar o Hidro (firmware-ctrl/ ou server-ctrl/):
+1. Verificar se a mudanca impacta mais de um componente (firmware, API, app)
+2. Se impacta firmware: verificar config.h, compilar e gravar via COM7
+3. Se impacta servidor/app: `bash deploy.sh server-ctrl`
+4. Testar no celular (com internet + rede Cultivee-Hidro)
+
+### Se alterar o Hidro-cam (firmware-hidro-cam/ ou server-hidro-cam/):
+1. Verificar se a mudanca impacta mais de um componente (firmware, API, app)
+2. Se impacta firmware: verificar config.h, compilar e gravar (porta COM a definir)
+3. Se impacta servidor/app: `bash deploy.sh hidro-cam`
+4. Testar no celular (com internet + rede Cultivee-HidroCam)
+
+### Se alterar o Cam (firmware-cam/ ou server/):
+1. Se impacta firmware: verificar config.h, compilar e gravar via COM9
+2. Se impacta servidor/app: `bash deploy.sh server`
+
+### Se alterar o site/:
+1. Testar localmente (npm run dev)
+2. `bash deploy.sh site`
+
+### Se alterar docker-compose.yml:
+1. Editar no REPOSITORIO (nunca no servidor)
+2. `bash deploy.sh` (qualquer variante envia o docker-compose.yml)

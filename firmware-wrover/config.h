@@ -30,8 +30,8 @@
 
 // ===== PRODUCAO: ESP32 envia dados para o VPS =====
 #ifdef ENV_PRODUCTION
-  #define SERVER_URL         "http://app.cultivee.com.br"
-  #define APP_URL            "https://app.cultivee.com.br"
+  #define SERVER_URL         "http://cam.cultivee.com.br"
+  #define APP_URL            "https://cam.cultivee.com.br"
   #define USE_HTTPS          false  // Traefik faz SSL termination, ESP envia HTTP
 #endif
 

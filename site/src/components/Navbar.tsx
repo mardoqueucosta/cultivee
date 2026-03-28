@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Leaf, ChevronDown, LayoutDashboard, Download, Camera, Droplets } from "lucide-react";
+import { Menu, X, Leaf, ChevronDown, Smartphone, Camera, Droplets } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import {
   DropdownMenu,
@@ -24,6 +24,7 @@ const Navbar = () => {
   ];
 
   const secondaryNavItems = [
+    { name: "Projeto", href: "/projeto" },
     { name: "Blog", href: "/blog" },
     { name: "Sobre", href: "/sobre" },
     { name: "Contato", href: "/contato" },
@@ -91,10 +92,21 @@ const Navbar = () => {
             </DropdownMenu>
 
             <Link
+              to="/projeto"
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-300 ${
+                isActive("/projeto")
+                  ? "text-primary bg-primary/10"
+                  : "text-foreground hover:text-primary hover:bg-primary/5"
+              }`}
+            >
+              Projeto
+            </Link>
+
+            <Link
               to="/blog"
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-300 ${
-                isActive("/blog") 
-                  ? "text-primary bg-primary/10" 
+                isActive("/blog")
+                  ? "text-primary bg-primary/10"
                   : "text-foreground hover:text-primary hover:bg-primary/5"
               }`}
             >
@@ -126,29 +138,12 @@ const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5">
-                  <LayoutDashboard className="w-4 h-4" />
-                  Meu Painel
-                  <ChevronDown className="w-3 h-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48 bg-background border-border">
-                <DropdownMenuItem asChild>
-                  <a href="https://app.cultivee.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
-                    <Camera className="w-4 h-4" />
-                    Camera
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <a href="https://hidro.cultivee.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
-                    <Droplets className="w-4 h-4" />
-                    Hidroponia
-                  </a>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Link to="/aplicativos">
+              <Button variant="default" size="sm" className="flex items-center gap-1.5 bg-primary hover:bg-primary/90">
+                <Smartphone className="w-4 h-4" />
+                Aplicativos
+              </Button>
+            </Link>
           </div>
 
           {/* Mobile menu button */}
@@ -228,31 +223,16 @@ const Navbar = () => {
               
               <div className="border-t border-border my-2"></div>
 
-              <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Meu Painel
-              </div>
-
-              <a
-                href="https://app.cultivee.com.br"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-3 rounded-lg font-medium transition-colors text-foreground hover:bg-muted flex items-center gap-2"
+              <Link
+                to="/aplicativos"
+                className={`px-4 py-3 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                  isActive("/aplicativos") ? "text-primary bg-primary/10" : "text-foreground hover:bg-muted"
+                }`}
                 onClick={() => setIsOpen(false)}
               >
-                <Camera className="w-4 h-4" />
-                Camera
-              </a>
-
-              <a
-                href="https://hidro.cultivee.com.br"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-3 rounded-lg font-medium transition-colors text-foreground hover:bg-muted flex items-center gap-2"
-                onClick={() => setIsOpen(false)}
-              >
-                <Droplets className="w-4 h-4" />
-                Hidroponia
-              </a>
+                <Smartphone className="w-4 h-4" />
+                Aplicativos
+              </Link>
             </div>
           </div>
         )}

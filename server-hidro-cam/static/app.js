@@ -260,6 +260,9 @@ function renderModules() {
             </div>`;
         }
     }).join("");
+
+    // CAMERA MODULE — unico ponto de integracao (remover esta linha desativa o card)
+    if (CAMERA_ENABLED) cam_render();
 }
 
 function toggleModuleDetails(chipId) {
@@ -788,6 +791,126 @@ async function doAutoPair(code) {
             </div>`;
         }
     }
+}
+
+// =====================================================================
+// CAMERA MODULE (isolado — deletar este bloco remove toda funcionalidade)
+// Para desabilitar: mudar CAMERA_ENABLED = false
+// Para deletar: remover este bloco + a linha cam_render() no renderModules()
+// =====================================================================
+
+const CAMERA_ENABLED = true;
+let cam_expanded = false;
+let cam_pending = false;
+let cam_imageUrl = null;
+let cam_lastLoaded = false;
+
+function cam_render() {
+    if (!CAMERA_ENABLED) return;
+    const section = document.getElementById("section-camera");
+    if (!section) return;
+
+    const onlineModule = modules.find(m => m.online);
+    const camReady = onlineModule && onlineModule.ctrl_data && onlineModule.ctrl_data.camera_ready;
+    const camOnline = !!camReady;
+    const chipId = onlineModule ? onlineModule.chip_id : null;
+
+    if (!onlineModule) {
+        section.innerHTML = "";
+        return;
+    }
+
+    const statusText = camOnline ? "Pronta" : "Offline";
+    const btnDisabled = !camOnline || cam_pending;
+
+    section.innerHTML = `
+        <div class="cam-card">
+            <div class="cam-header" onclick="cam_toggle()">
+                <div class="module-compact-info">
+                    <span class="status-dot ${camOnline ? 'online' : 'offline'}"></span>
+                    <span class="module-compact-name">Camera</span>
+                    <span class="module-compact-meta" style="color:var(--text-dim)">${statusText}</span>
+                </div>
+                <svg class="module-chevron" id="cam-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="${cam_expanded ? 'transform:rotate(180deg)' : ''}"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="cam-body ${cam_expanded ? '' : 'hidden'}" id="cam-body">
+                <div class="cam-preview" id="cam-preview">
+                    ${cam_imageUrl
+                        ? `<img src="${cam_imageUrl}&token=${token}" alt="Captura" />`
+                        : `<div class="cam-placeholder">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                <circle cx="12" cy="13" r="4"/>
+                            </svg>
+                            <p>${camOnline ? 'Toque em Capturar' : 'Camera nao conectada'}</p>
+                        </div>`
+                    }
+                </div>
+                <div class="cam-actions">
+                    <button class="cam-btn ${cam_pending ? 'pending' : ''}" onclick="cam_capture('${chipId}')" ${btnDisabled ? 'disabled' : ''}>
+                        ${cam_pending
+                            ? '<span class="btn-spinner"></span> Capturando...'
+                            : '&#128247; Capturar'
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>`;
+
+    if (cam_expanded && !cam_lastLoaded && chipId && camOnline) {
+        cam_lastLoaded = true;
+        cam_loadLast(chipId);
+    }
+}
+
+function cam_toggle() {
+    cam_expanded = !cam_expanded;
+    cam_render();
+    if (cam_expanded && !cam_lastLoaded && activeCtrlChipId) {
+        cam_lastLoaded = true;
+        cam_loadLast(activeCtrlChipId);
+    }
+}
+
+async function cam_capture(chipId) {
+    if (!chipId || cam_pending) return;
+    cam_pending = true;
+    cam_render();
+
+    try {
+        // Enfileira comando de captura no servidor
+        await api(`/api/hidro-cam/${chipId}/capture`);
+
+        // Polling: espera a imagem chegar (ESP32 envia via push, max 15s)
+        for (let i = 0; i < 10; i++) {
+            await new Promise(r => setTimeout(r, 1500));
+            try {
+                const data = await api(`/api/hidro-cam/${chipId}/last-capture`);
+                if (data.status === "ok" && data.url) {
+                    const newUrl = data.url + "?t=" + Date.now();
+                    if (newUrl !== cam_imageUrl) {
+                        cam_imageUrl = newUrl;
+                        break;
+                    }
+                }
+            } catch (e) { break; }
+        }
+    } catch (e) {
+        console.error("Erro captura:", e);
+    }
+
+    cam_pending = false;
+    cam_render();
+}
+
+async function cam_loadLast(chipId) {
+    try {
+        const data = await api(`/api/hidro-cam/${chipId}/last-capture`);
+        if (data.status === "ok" && data.url) {
+            cam_imageUrl = data.url + "?t=" + Date.now();
+            cam_render();
+        }
+    } catch (e) { /* sem imagem anterior */ }
 }
 
 // =====================================================================

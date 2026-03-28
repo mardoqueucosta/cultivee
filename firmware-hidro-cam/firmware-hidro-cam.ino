@@ -10,6 +10,7 @@
   - Modo manual (override dos reles)
 */
 
+#include "esp_camera.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Preferences.h>
@@ -18,6 +19,24 @@
 #include <ESPmDNS.h>
 #include <time.h>
 #include "config.h"
+
+// --- Pinos Camera ESP32-WROVER-DEV ---
+#define PWDN_GPIO_NUM     -1
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM     21
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     27
+#define Y9_GPIO_NUM       35
+#define Y8_GPIO_NUM       34
+#define Y7_GPIO_NUM       39
+#define Y6_GPIO_NUM       36
+#define Y5_GPIO_NUM       19
+#define Y4_GPIO_NUM       18
+#define Y3_GPIO_NUM        5
+#define Y2_GPIO_NUM        4
+#define VSYNC_GPIO_NUM    25
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     22
 
 // Protecao contra configuracao errada
 #if !defined(ENV_LOCAL) && !defined(ENV_PRODUCTION)
@@ -60,6 +79,7 @@ WebServer server(80);
 DNSServer dnsServer;
 String chipId;
 String shortId;
+bool cameraReady = false;  // CAMERA: estado da camera
 
 // WiFi credentials
 String savedSSID = "";
@@ -507,7 +527,8 @@ void registerOnServer() {
   json += "\"start_date\":\"" + String(startDate) + "\",";
   json += "\"ntp_synced\":" + String(ntpSynced ? "true" : "false") + ",";
   json += "\"time\":\"" + String(timeStr) + "\",";
-  json += "\"phases\":" + phasesJson;
+  json += "\"phases\":" + phasesJson + ",";
+  json += "\"camera_ready\":" + String(cameraReady ? "true" : "false");
   json += "}}";
 
   int code = http.POST(json);
@@ -650,6 +671,26 @@ void processPendingCommands(String response) {
       }
       savePhases();
       Serial.println("Remoto: Config salva");
+    } else if (cmd == "capture") {
+      // CAMERA: tira foto e envia para o servidor via POST
+      if (cameraReady) {
+        camera_fb_t* fb = esp_camera_fb_get();
+        if (fb) {
+          HTTPClient camHttp;
+          String uploadUrl = String(SERVER_URL) + "/api/hidro-cam/" + chipId + "/upload-capture";
+          camHttp.begin(uploadUrl);
+          camHttp.addHeader("Content-Type", "image/jpeg");
+          camHttp.setTimeout(15000);
+          int httpCode = camHttp.POST(fb->buf, fb->len);
+          Serial.printf("Capture push: %d bytes -> HTTP %d\n", fb->len, httpCode);
+          camHttp.end();
+          esp_camera_fb_return(fb);
+        } else {
+          Serial.println("Capture: erro ao capturar frame");
+        }
+      } else {
+        Serial.println("Capture: camera nao inicializada");
+      }
     }
   }
 }
@@ -745,6 +786,8 @@ String getStatusJSON() {
     json += "}";
   }
   json += "]";
+
+  json += ",\"camera_ready\":" + String(cameraReady ? "true" : "false");
 
   json += "}";
   return json;
@@ -848,7 +891,7 @@ void handleDashboard() {
   String html = R"rawliteral(<!DOCTYPE html><html><head>
 <meta name='viewport' content='width=device-width,initial-scale=1'>
 <meta charset='UTF-8'>
-<title>Cultivee HidroCamCam</title>
+<title>Cultivee HidroCam</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,sans-serif;background:#1a1d23;color:#e0e0e0;max-width:480px;margin:0 auto}
@@ -865,6 +908,27 @@ body{font-family:-apple-system,sans-serif;background:#1a1d23;color:#e0e0e0;max-w
 .footer a{color:#27ae60;text-decoration:none}
 </style></head><body>
 <div class='top'><div class='logo'>C</div><div><h1>CULTIVEE</h1><p>HidroCam Inteligente</p></div></div>
+
+<div class='card' style='padding:0;overflow:hidden'>
+<div onclick='camTgl()' style='display:flex;justify-content:space-between;align-items:center;padding:14px;cursor:pointer'>
+<div style='display:flex;align-items:center;gap:8px'>
+<span style='width:8px;height:8px;border-radius:50%;background:)rawliteral" + String(cameraReady ? "#27ae60" : "#e74c3c") + R"rawliteral('></span>
+<b style='font-size:0.9rem'>Camera</b>
+<span style='color:#888;font-size:0.8rem'>)rawliteral" + String(cameraReady ? "Pronta" : "Offline") + R"rawliteral(</span>
+</div>
+<svg id='cam-chv' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='#888' stroke-width='2' style='transition:transform 0.25s'><polyline points='6 9 12 15 18 9'/></svg>
+</div>
+<div id='cam-body' style='display:none;padding:0 14px 14px;border-top:1px solid #2a2d35'>
+<div id='cam-img' style='background:#1a1d23;border-radius:8px;min-height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-top:10px'>
+<span style='color:#555;font-size:0.85rem'>Toque em Capturar</span>
+</div>
+<div style='display:flex;gap:8px;margin-top:8px'>
+<button id='cam-btn' onclick='cap()' style='flex:1;padding:10px;border-radius:10px;border:1px solid #3a3d45;background:#2a2d35;color:#aaa;font-weight:600;font-size:0.85rem;cursor:pointer' )rawliteral" + String(cameraReady ? "" : "disabled") + R"rawliteral(>&#128247; Capturar</button>
+<button id='live-btn' onclick='live()' style='flex:1;padding:10px;border-radius:10px;border:1px solid #3a3d45;background:#2a2d35;color:#aaa;font-weight:600;font-size:0.85rem;cursor:pointer' )rawliteral" + String(cameraReady ? "" : "disabled") + R"rawliteral(>&#127909; Ao Vivo</button>
+</div>
+</div>
+</div>
+
 <div class='card'>
 <div class='grid'>
 <div class='stat'><div class='lb'>Ciclo</div><div class='vl'>Dia )rawliteral" + String(cycleDay) + R"rawliteral(</div></div>
@@ -881,7 +945,7 @@ body{font-family:-apple-system,sans-serif;background:#1a1d23;color:#e0e0e0;max-w
 )rawliteral" + phasesHtml + R"rawliteral(</div>
 
 <div class='footer'>
-<a href='/setup-wifi'>&#9881; Configurar WiFi</a> &nbsp;|&nbsp; Cultivee HidroCamCam v1.0.1
+<a href='/setup-wifi'>&#9881; Configurar WiFi</a> &nbsp;|&nbsp; Cultivee HidroCam v1.0.1
 </div>
 <script>
 function cmd(d,a){fetch('/relay?device='+d+'&action='+a).then(r=>r.json()).then(s=>upd(s)).catch(()=>{})}
@@ -899,6 +963,44 @@ if(isAuto&&mb){mb.remove()}
 if(!isAuto&&!mb){location.reload()}
 }
 setInterval(()=>fetch('/status').then(r=>r.json()).then(s=>upd(s)).catch(()=>{}),10000);
+var liveOn=false;
+function live(){
+var im=document.getElementById('cam-img'),b=document.getElementById('live-btn');
+if(liveOn){
+liveOn=false;
+im.innerHTML='<span style="color:#555;font-size:0.85rem">Toque em Capturar</span>';
+b.innerHTML='&#127909; Ao Vivo';
+b.style.borderColor='#3a3d45';b.style.background='#2a2d35';b.style.color='#aaa';
+} else {
+liveOn=true;
+var s='/stream?t='+Date.now();
+var img=document.createElement('img');
+img.src=s;img.style.cssText='width:100%;border-radius:8px';
+img.onerror=function(){if(liveOn){this.src='/stream?t='+Date.now()}};
+im.innerHTML='';im.appendChild(img);
+b.innerHTML='&#9632; Parar';
+b.style.borderColor='#e74c3c';b.style.background='rgba(231,76,60,0.1)';b.style.color='#e74c3c';
+}
+}
+function camTgl(){
+var b=document.getElementById('cam-body'),c=document.getElementById('cam-chv');
+var open=b.style.display==='none';
+b.style.display=open?'block':'none';
+c.style.transform=open?'rotate(180deg)':'';
+}
+function cap(){
+var b=document.getElementById('cam-btn'),im=document.getElementById('cam-img');
+b.disabled=true;b.innerHTML='&#9203; Capturando...';
+im.innerHTML='<div style="padding:20px;text-align:center"><div style="width:24px;height:24px;border:3px solid #333;border-top-color:#27ae60;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto"></div><p style="color:#555;margin-top:8px;font-size:0.8rem">Aguardando imagem...</p></div>';
+fetch('/capture').then(r=>{if(!r.ok)throw'err';return r.blob()}).then(bl=>{
+var url=URL.createObjectURL(bl);
+im.innerHTML='<img src="'+url+'" style="width:100%;border-radius:8px">';
+b.disabled=false;b.innerHTML='&#128247; Capturar';
+}).catch(()=>{
+im.innerHTML='<span style="color:#e74c3c;font-size:0.85rem">Erro ao capturar</span>';
+b.disabled=false;b.innerHTML='&#128247; Capturar';
+})
+}
 </script>
 </body></html>)rawliteral";
 
@@ -1313,9 +1415,144 @@ void handleCaptiveGeneric() {
 
 // ===================== SETUP =====================
 
+// =====================================================================
+// CAMERA (isolado — deletar este bloco remove funcionalidade de camera)
+// =====================================================================
+
+bool initCamera() {
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG;
+  config.frame_size = FRAMESIZE_VGA;
+  config.jpeg_quality = 12;
+  config.fb_count = 2;
+
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+    Serial.printf("Erro camera: 0x%x\n", err);
+    return false;
+  }
+
+  sensor_t* s = esp_camera_sensor_get();
+  s->set_vflip(s, 0);
+  s->set_hmirror(s, 0);
+  s->set_whitebal(s, 1);
+  s->set_awb_gain(s, 1);
+  s->set_wb_mode(s, 0);
+  s->set_exposure_ctrl(s, 1);
+  s->set_aec2(s, 1);
+  s->set_gain_ctrl(s, 1);
+  s->set_raw_gma(s, 1);
+  s->set_lenc(s, 1);
+  s->set_saturation(s, 0);
+
+  for (int i = 0; i < 5; i++) {
+    camera_fb_t* fb = esp_camera_fb_get();
+    if (fb) esp_camera_fb_return(fb);
+    delay(100);
+  }
+
+  Serial.println("Camera OK!");
+  return true;
+}
+
+void handleCapture() {
+  if (!cameraReady) {
+    sendCORS();
+    server.send(503, "application/json", "{\"error\":\"Camera nao inicializada\"}");
+    return;
+  }
+
+  camera_fb_t* fb = esp_camera_fb_get();
+  if (!fb) {
+    sendCORS();
+    server.send(500, "application/json", "{\"error\":\"Erro ao capturar\"}");
+    return;
+  }
+
+  WiFiClient client = server.client();
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: image/jpeg");
+  client.println("Content-Length: " + String(fb->len));
+  client.println("Access-Control-Allow-Origin: *");
+  client.println("Cache-Control: no-cache, no-store");
+  client.println("Connection: close");
+  client.println();
+
+  uint8_t* buf = fb->buf;
+  size_t remaining = fb->len;
+  while (remaining > 0) {
+    size_t chunk = remaining > 4096 ? 4096 : remaining;
+    client.write(buf, chunk);
+    buf += chunk;
+    remaining -= chunk;
+  }
+
+  esp_camera_fb_return(fb);
+  Serial.printf("Capture: %d bytes\n", fb->len);
+}
+
+void handleStream() {
+  if (!cameraReady) {
+    sendCORS();
+    server.send(503, "text/plain", "Camera nao inicializada");
+    return;
+  }
+
+  WiFiClient client = server.client();
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
+  client.println("Access-Control-Allow-Origin: *");
+  client.println("Cache-Control: no-cache");
+  client.println("Connection: close");
+  client.println();
+
+  for (int i = 0; i < 600 && client.connected(); i++) {
+    camera_fb_t* fb = esp_camera_fb_get();
+    if (!fb) { delay(10); continue; }
+
+    client.printf("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", fb->len);
+
+    uint8_t* buf = fb->buf;
+    size_t remaining = fb->len;
+    while (remaining > 0 && client.connected()) {
+      size_t chunk = remaining > 8192 ? 8192 : remaining;
+      client.write(buf, chunk);
+      buf += chunk;
+      remaining -= chunk;
+    }
+    client.print("\r\n");
+    esp_camera_fb_return(fb);
+    delay(100);
+  }
+}
+
+// =====================================================================
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  // Camera
+  cameraReady = initCamera();
 
   // GPIO
   pinMode(RELE_LAMPADA, OUTPUT);
@@ -1332,7 +1569,7 @@ void setup() {
   chipId = String(macStr);
   shortId = chipId.substring(chipId.length() - 4);
 
-  Serial.println("\n=== Cultivee HidroCamCam ===");
+  Serial.println("\n=== Cultivee HidroCam ===");
   Serial.printf("Chip ID: %s (%s)\n", chipId.c_str(), shortId.c_str());
 
   // Carregar fases
@@ -1376,6 +1613,8 @@ void setup() {
   // Rotas de controle hidro-cam
   server.on("/config", handleConfig);
   server.on("/save-config", HTTP_POST, handleSaveConfig);
+  server.on("/capture", handleCapture);
+  server.on("/stream", handleStream);
   server.on("/relay", handleRelay);
   server.on("/gpio", handleGpio);
   server.on("/status", handleStatus);

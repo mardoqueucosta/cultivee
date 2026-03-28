@@ -496,6 +496,87 @@ def ctrl_reset_wifi(chip_id):
 
 
 # =====================================================================
+# CAMERA (isolado — deletar este bloco remove funcionalidade de camera)
+# =====================================================================
+
+import pathlib
+
+CAPTURE_DIR = pathlib.Path(os.environ.get("DATA_DIR", "data")) / "captures"
+
+@app.route("/api/hidro-cam/<chip_id>/capture")
+@require_auth
+def cam_capture(chip_id):
+    """Enfileira comando de captura — ESP32 vai tirar foto e enviar via push."""
+    module = models.get_module_by_chip_id(chip_id)
+    if not module or module.get("user_id") != request.user["id"]:
+        return jsonify({"error": "Modulo nao encontrado"}), 404
+
+    models.add_pending_command(chip_id, "capture")
+    models.mark_activity(chip_id)  # Acelera polling para 2s
+    return jsonify({"status": "queued"})
+
+
+@app.route("/api/hidro-cam/<chip_id>/upload-capture", methods=["POST"])
+def cam_upload(chip_id):
+    """ESP32 envia foto capturada (push)."""
+    img_data = request.get_data()
+    if not img_data or len(img_data) < 100:
+        return jsonify({"error": "Imagem vazia"}), 400
+
+    save_dir = CAPTURE_DIR / chip_id
+    save_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{timestamp}.jpg"
+    (save_dir / filename).write_bytes(img_data)
+
+    log.info(f"Capture push [{chip_id[:4]}]: {filename} ({len(img_data)/1024:.1f} KB)")
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/hidro-cam/<chip_id>/image/<filename>")
+@require_auth
+def cam_image(chip_id, filename):
+    """Serve imagem capturada."""
+    module = models.get_module_by_chip_id(chip_id)
+    if not module or module.get("user_id") != request.user["id"]:
+        return jsonify({"error": "Nao autorizado"}), 403
+
+    filepath = CAPTURE_DIR / chip_id / filename
+    if not filepath.exists() or not filepath.is_file():
+        return jsonify({"error": "Imagem nao encontrada"}), 404
+
+    return Response(
+        filepath.read_bytes(),
+        mimetype="image/jpeg",
+        headers={"Cache-Control": "no-cache, no-store"}
+    )
+
+
+@app.route("/api/hidro-cam/<chip_id>/last-capture")
+@require_auth
+def cam_last_capture(chip_id):
+    """Retorna URL da ultima imagem capturada."""
+    module = models.get_module_by_chip_id(chip_id)
+    if not module or module.get("user_id") != request.user["id"]:
+        return jsonify({"error": "Modulo nao encontrado"}), 404
+
+    cap_dir = CAPTURE_DIR / chip_id
+    if not cap_dir.exists():
+        return jsonify({"status": "empty"})
+
+    files = sorted(cap_dir.glob("*.jpg"), reverse=True)
+    if not files:
+        return jsonify({"status": "empty"})
+
+    filename = files[0].name
+    return jsonify({
+        "status": "ok",
+        "url": f"/api/hidro-cam/{chip_id}/image/{filename}",
+        "size_kb": round(files[0].stat().st_size / 1024, 1)
+    })
+
+
+# =====================================================================
 # Dashboard
 # =====================================================================
 

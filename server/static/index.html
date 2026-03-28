@@ -210,15 +210,20 @@
                 <div class="wizard-checklist">
                     <div class="check-item">
                         <span class="check-num">1</span>
-                        <span>Va nas <strong>configuracoes WiFi</strong> do celular e conecte na rede <strong>Cultivee-Cam</strong> (sem senha)</span>
+                        <span>Va nas <strong>configuracoes WiFi</strong> do celular e conecte na rede <strong>Cultivee-Cam</strong> ou <strong>Cultivee-Wrover</strong> (sem senha)</span>
                     </div>
                     <div class="check-item">
                         <span class="check-num">2</span>
-                        <span>Volte aqui e toque no botao abaixo</span>
+                        <span>O portal de configuracao abre automaticamente. Selecione sua rede WiFi e digite a senha</span>
+                    </div>
+                    <div class="check-item">
+                        <span class="check-num">3</span>
+                        <span>Anote o <strong>codigo de 4 letras</strong> que aparece na tela de confirmacao</span>
                     </div>
                 </div>
-                <a class="btn-primary" href="http://192.168.4.1" target="_blank" style="display:block;text-align:center;text-decoration:none;padding:0.85rem;border-radius:0.5rem;font-weight:600;margin-top:1rem">Configurar WiFi do modulo</a>
-                <p class="wizard-note" style="margin-top:1rem">Apos configurar, o modulo vai reiniciar. Reconecte no seu WiFi normal e toque abaixo.</p>
+                <a class="btn-primary" href="http://192.168.4.1" target="_blank" style="display:block;text-align:center;text-decoration:none;padding:0.85rem;border-radius:0.5rem;font-weight:600;margin-top:1rem">Abrir portal do modulo</a>
+                <p class="wizard-note" style="margin-top:0.75rem">Se o portal nao abrir automaticamente, acesse <strong>192.168.4.1</strong> no navegador.</p>
+                <p class="wizard-note">Apos configurar, reconecte no seu WiFi normal e toque abaixo.</p>
                 <div class="wizard-actions">
                     <button class="btn-secondary" onclick="wizardBack(0)">Voltar</button>
                     <button class="btn-primary" onclick="wizardNext(2)">Ja configurei</button>
@@ -243,7 +248,7 @@
                 <button class="btn-primary" onclick="doPair()" style="width:100%">Vincular</button>
                 <p id="pair-error" class="auth-error hidden"></p>
                 <div class="wizard-actions" style="margin-top:0.5rem">
-                    <button class="btn-secondary" onclick="wizardBack(2)">Voltar</button>
+                    <button class="btn-secondary" onclick="wizardBack(0)">Voltar</button>
                 </div>
             </div>
         </div>

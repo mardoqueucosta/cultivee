@@ -317,7 +317,10 @@ function renderModules() {
                         <span class="module-compact-name">${name}</span>
                         <span class="module-compact-meta" style="color:#999">Offline</span>
                     </div>
-                    <a href="http://192.168.4.1" target="_blank" class="btn-setup-small" onclick="event.stopPropagation()">Configurar</a>
+                    <a href="http://192.168.4.1" target="_blank" class="btn-setup-small" onclick="event.stopPropagation()">Configurar WiFi</a>
+                </div>
+                <div style="padding:0.5rem 0.75rem 0.75rem;font-size:0.75rem;color:#888;border-top:1px solid #2a2a3e">
+                    Conecte na rede <strong>Cultivee-Cam</strong> ou <strong>Cultivee-Wrover</strong> para configurar
                 </div>
             </div>`;
         }

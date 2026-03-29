@@ -22,7 +22,7 @@ const Footer = () => {
   const socialLinks = [
     { icon: Instagram, href: "https://instagram.com/cultivee", label: "Instagram" },
     { icon: Youtube, href: "https://youtube.com/cultivee", label: "YouTube" },
-    { icon: MessageCircle, href: "https://wa.me/5519999999999", label: "WhatsApp" },
+    { icon: MessageCircle, href: "https://wa.me/5519992805563", label: "WhatsApp" },
   ];
 
   return (
@@ -112,13 +112,13 @@ const Footer = () => {
                 <span>contato@cultivee.com.br</span>
               </a>
               <a 
-                href="https://wa.me/5519999999999"
+                href="https://wa.me/5519992805563"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 text-white/70 hover:text-white transition-colors duration-300"
               >
                 <Phone className="w-5 h-5 flex-shrink-0" />
-                <span>+55 (19) 8888-8888</span>
+                <span>+55 (19) 99280-5563</span>
               </a>
               <div className="flex items-center gap-3 text-white/70">
                 <MapPin className="w-5 h-5 flex-shrink-0" />

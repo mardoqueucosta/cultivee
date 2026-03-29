@@ -3,7 +3,7 @@ import { ArrowRight, MessageCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const HeroSection = () => {
-  const whatsappLink = "https://wa.me/5511999999999?text=Olá! Gostaria de saber mais sobre os cursos da Cultivee.";
+  const whatsappLink = "https://wa.me/5519992805563?text=Olá! Gostaria de saber mais sobre os cursos da Cultivee.";
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-subtle pt-16">

@@ -2,7 +2,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import { Button } from "@/components/ui/button";
-import { Leaf, Sprout, Droplets, Check, ChevronDown } from "lucide-react";
+import { Leaf, Sprout, Droplets, Check, ChevronDown, Building2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   Accordion,
@@ -15,17 +15,27 @@ const AgroPage = () => {
   const courses = [
     {
       title: "Cultivo de Microverdes",
-      description: "Colheita em 7-14 dias. Aprenda do zero à comercialização.",
+      description: "Colheita em 7-14 dias. Do zero à comercialização com margens de até 90%.",
       badge: "Mais vendido",
-      image: "/placeholder.svg",
-      topics: ["Germinação e sementes", "Substratos ideais", "Iluminação", "Colheita e armazenamento"]
+      image: "/cursos/microverdes.jpg",
+      link: "/cursos/microverdes",
+      topics: ["Germinação e sementes", "20+ variedades", "Colheita e armazenamento", "Negócio e precificação"]
     },
     {
-      title: "Hidroponia e Cultivo Indoor",
-      description: "Monte seu sistema NFT em casa ou em escala comercial.",
+      title: "Hidroponia — Cultivo de Hortaliças",
+      description: "Monte seu sistema NFT e produza hortaliças o ano todo com controle total.",
       badge: null,
-      image: "/placeholder.svg",
-      topics: ["Sistema NFT", "Nutrição vegetal", "Controle climático", "Escalonamento comercial"]
+      image: "/cursos/hidroponia.jpg",
+      link: "/cursos/hidroponia",
+      topics: ["Sistema NFT passo a passo", "Solução nutritiva e pH", "Manejo de pragas e doenças", "Produção comercial de hortaliças"]
+    },
+    {
+      title: "Cultivo Indoor e Fazendas Verticais",
+      description: "Produza em ambientes controlados com até 390x mais produtividade por m².",
+      badge: "Novo",
+      image: "/cursos/cultivo-indoor.jpg",
+      link: "/cursos/cultivo-indoor",
+      topics: ["Iluminação LED e espectro", "Controle climático automatizado", "Agricultura vertical multi-nível", "IoT e automação de cultivo"]
     }
   ];
 
@@ -84,33 +94,41 @@ const AgroPage = () => {
             Nossos Cursos
           </h2>
           
-          <div className="grid md:grid-cols-2 gap-8">
+          <div className="grid md:grid-cols-3 gap-8">
             {courses.map((course, index) => (
               <div key={index} className="bg-card rounded-2xl overflow-hidden border border-border shadow-elegant hover:shadow-agro transition-all duration-300 hover:-translate-y-1">
                 <div className="h-48 bg-muted relative">
                   <img src={course.image} alt={course.title} className="w-full h-full object-cover" />
                   {course.badge && (
-                    <span className="absolute top-4 left-4 px-3 py-1 bg-agro text-white text-sm font-medium rounded-full">
+                    <span className={`absolute top-4 left-4 px-3 py-1 text-white text-sm font-medium rounded-full ${course.badge === "Novo" ? "bg-blue-500" : "bg-agro"}`}>
                       {course.badge}
                     </span>
                   )}
                 </div>
                 <div className="p-6">
-                  <h3 className="text-2xl font-bold text-foreground mb-3">{course.title}</h3>
-                  <p className="text-muted-foreground mb-6">{course.description}</p>
-                  
+                  <h3 className="text-xl font-bold text-foreground mb-3">{course.title}</h3>
+                  <p className="text-muted-foreground text-sm mb-6">{course.description}</p>
+
                   <div className="space-y-2 mb-6">
                     {course.topics.map((topic, idx) => (
                       <div key={idx} className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-agro" />
+                        <Check className="w-4 h-4 text-agro flex-shrink-0" />
                         <span className="text-sm text-foreground">{topic}</span>
                       </div>
                     ))}
                   </div>
-                  
-                  <Button className="w-full bg-agro hover:bg-agro-dark text-white">
-                    Saiba mais
-                  </Button>
+
+                  {course.link ? (
+                    <Link to={course.link} className="block">
+                      <Button className="w-full bg-agro hover:bg-agro-dark text-white">
+                        Saiba mais
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Button className="w-full bg-agro/80 text-white cursor-default" disabled>
+                      Em breve
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

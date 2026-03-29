@@ -4,9 +4,16 @@
     {
       "name": "hidroponia-ctrl",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["app.py"],
+      "runtimeArgs": ["run-ctrl.py"],
       "port": 5002,
-      "cwd": "D:/01-projetos-claude/cultivee/server-ctrl"
+      "cwd": "D:/01-projetos-claude/cultivee/server"
+    },
+    {
+      "name": "hidro-cam",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["run-hidro-cam.py"],
+      "port": 5003,
+      "cwd": "D:/01-projetos-claude/cultivee/server"
     }
   ]
 }

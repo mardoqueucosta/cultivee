@@ -17,35 +17,17 @@ services:
       - "traefik.http.routers.cultivee-site-http.middlewares=https-redirect@file"
       - "traefik.http.services.cultivee-site.loadbalancer.server.port=80"
 
-  app:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
-    container_name: cultivee-app
-    restart: unless-stopped
-    environment:
-      - DATA_DIR=/app/data/images
-      - DB_PATH=/app/data/cultivee.db
-    volumes:
-      - cultivee-data:/app/data
-    networks:
-      - web
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.cultivee-app.rule=Host(`app.cultivee.com.br`) || Host(`cam.cultivee.com.br`)"
-      - "traefik.http.routers.cultivee-app.entrypoints=websecure"
-      - "traefik.http.routers.cultivee-app.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.cultivee-app-http.rule=Host(`app.cultivee.com.br`) || Host(`cam.cultivee.com.br`)"
-      - "traefik.http.routers.cultivee-app-http.entrypoints=web"
-      - "traefik.http.services.cultivee-app.loadbalancer.server.port=5000"
-
+  # Produto: Hidroponia (ESP32-WROOM, sem camera)
   ctrl:
     build:
-      context: ./server-ctrl
+      context: ./server
       dockerfile: Dockerfile
     container_name: cultivee-ctrl
     restart: unless-stopped
     environment:
+      - MODULE_TYPE=ctrl
+      - API_PREFIX=/api/ctrl
+      - PORT=5002
       - DB_PATH=/app/data/cultivee-ctrl.db
     volumes:
       - cultivee-ctrl-data:/app/data
@@ -60,14 +42,19 @@ services:
       - "traefik.http.routers.cultivee-ctrl-http.entrypoints=web"
       - "traefik.http.services.cultivee-ctrl.loadbalancer.server.port=5002"
 
+  # Produto: HidroCam (ESP32-WROVER, hidro + camera)
   hidro-cam:
     build:
-      context: ./server-hidro-cam
+      context: ./server
       dockerfile: Dockerfile
     container_name: cultivee-hidro-cam
     restart: unless-stopped
     environment:
+      - MODULE_TYPE=hidro-cam
+      - API_PREFIX=/api/hidro-cam
+      - PORT=5003
       - DB_PATH=/app/data/cultivee-hidro-cam.db
+      - DATA_DIR=/app/data
     volumes:
       - cultivee-hidro-cam-data:/app/data
     networks:
@@ -82,7 +69,6 @@ services:
       - "traefik.http.services.cultivee-hidro-cam.loadbalancer.server.port=5003"
 
 volumes:
-  cultivee-data:
   cultivee-ctrl-data:
   cultivee-hidro-cam-data:
 

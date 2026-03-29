@@ -14,6 +14,11 @@ import BlogPage from "./pages/Blog";
 import BlogArticlePage from "./pages/BlogArticle";
 import ProjetoPage from "./pages/Projeto";
 import AplicativosPage from "./pages/Aplicativos";
+import ProdutoHidroponiaPage from "./pages/ProdutoHidroponia";
+import ProdutoCameraPage from "./pages/ProdutoCamera";
+import CursoMicroverdesPage from "./pages/CursoMicroverdes";
+import CursoHidroponiaPage from "./pages/CursoHidroponia";
+import CursoCultivoIndoorPage from "./pages/CursoCultivoIndoor";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +41,11 @@ const App = () => (
           <Route path="/blog/:slug" element={<BlogArticlePage />} />
           <Route path="/projeto" element={<ProjetoPage />} />
           <Route path="/aplicativos" element={<AplicativosPage />} />
+          <Route path="/produtos/controle-hidroponia" element={<ProdutoHidroponiaPage />} />
+          <Route path="/produtos/controle-camera" element={<ProdutoCameraPage />} />
+          <Route path="/cursos/microverdes" element={<CursoMicroverdesPage />} />
+          <Route path="/cursos/hidroponia" element={<CursoHidroponiaPage />} />
+          <Route path="/cursos/cultivo-indoor" element={<CursoCultivoIndoorPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

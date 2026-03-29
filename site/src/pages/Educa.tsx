@@ -81,7 +81,7 @@ const EducaPage = () => {
           <div className="bg-card rounded-2xl overflow-hidden border border-border shadow-elegant">
             <div className="grid md:grid-cols-2">
               <div className="h-64 md:h-auto bg-muted">
-                <img src="/placeholder.svg" alt="Curso MEAD" className="w-full h-full object-cover" />
+                <img src="/cursos/escrita-academica.jpg" alt="Curso MEAD" className="w-full h-full object-cover" />
               </div>
               <div className="p-8 md:p-12">
                 <span className="inline-block px-3 py-1 bg-educa/10 text-educa text-sm font-medium rounded-full mb-4">

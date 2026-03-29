@@ -16,13 +16,13 @@ const TechPage = () => {
     {
       title: "Instrumentação Prática",
       description: "Mecânica, eletrônica e programação para montagem de produtos e protótipos.",
-      image: "/placeholder.svg",
+      image: "/cursos/instrumentacao.jpg",
       topics: ["Sensores e atuadores", "Arduino e ESP32", "Prototipagem rápida", "Integração de sistemas"]
     },
     {
       title: "Empreendedorismo Técnico",
       description: "Valide ideias, estruture negócios, conquiste mercado. Transforme conhecimento técnico em empresa.",
-      image: "/placeholder.svg",
+      image: "/cursos/empreendedorismo.jpg",
       topics: ["Validação de ideias", "Modelo de negócios", "MVP e iteração", "Captação de recursos"]
     }
   ];

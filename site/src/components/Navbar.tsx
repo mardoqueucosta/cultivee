@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Menu, X, Leaf, ChevronDown, Smartphone, Camera, Droplets } from "lucide-react";
+import { Menu, X, Leaf, ChevronDown, Camera, Droplets } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import {
   DropdownMenu,
@@ -13,27 +12,15 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
 
-  const mainNavItems = [
-    { name: "Home", href: "/" },
-  ];
-
   const pillarItems = [
     { name: "Agro", href: "/agro", color: "text-agro" },
     { name: "Educa", href: "/educa", color: "text-educa" },
     { name: "Tech", href: "/tech", color: "text-tech" },
   ];
 
-  const secondaryNavItems = [
-    { name: "Projeto", href: "/projeto" },
-    { name: "Blog", href: "/blog" },
-    { name: "Sobre", href: "/sobre" },
-    { name: "Contato", href: "/contato" },
-  ];
-
-  const allNavItems = [
-    ...mainNavItems,
-    ...pillarItems,
-    ...secondaryNavItems,
+  const productItems = [
+    { name: "Controle Hidroponia", href: "/produtos/controle-hidroponia", icon: Droplets, color: "text-green-500" },
+    { name: "Controle Câmera", href: "/produtos/controle-camera", icon: Camera, color: "text-blue-500" },
   ];
 
   const isActive = (href: string) => {
@@ -60,8 +47,8 @@ const Navbar = () => {
             <Link
               to="/"
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-300 ${
-                isActive("/") 
-                  ? "text-primary bg-primary/10" 
+                isActive("/")
+                  ? "text-primary bg-primary/10"
                   : "text-foreground hover:text-primary hover:bg-primary/5"
               }`}
             >
@@ -85,6 +72,33 @@ const Navbar = () => {
                     >
                       <span className={`w-2 h-2 rounded-full ${item.color.replace('text-', 'bg-')}`}></span>
                       Cultivee {item.name}
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Produtos Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={`flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-300 ${
+                  isActive("/produtos")
+                    ? "text-primary bg-primary/10"
+                    : "text-foreground hover:text-primary hover:bg-primary/5"
+                }`}>
+                  Produtos
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-56 bg-background border-border">
+                {productItems.map((item) => (
+                  <DropdownMenuItem key={item.name} asChild>
+                    <Link
+                      to={item.href}
+                      className="flex items-center gap-2"
+                    >
+                      <item.icon className={`w-4 h-4 ${item.color}`} />
+                      {item.name}
                     </Link>
                   </DropdownMenuItem>
                 ))}
@@ -116,8 +130,8 @@ const Navbar = () => {
             <Link
               to="/sobre"
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-300 ${
-                isActive("/sobre") 
-                  ? "text-primary bg-primary/10" 
+                isActive("/sobre")
+                  ? "text-primary bg-primary/10"
                   : "text-foreground hover:text-primary hover:bg-primary/5"
               }`}
             >
@@ -127,22 +141,12 @@ const Navbar = () => {
             <Link
               to="/contato"
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-300 ${
-                isActive("/contato") 
-                  ? "text-primary bg-primary/10" 
+                isActive("/contato")
+                  ? "text-primary bg-primary/10"
                   : "text-foreground hover:text-primary hover:bg-primary/5"
               }`}
             >
               Contato
-            </Link>
-          </div>
-
-          {/* Desktop CTA */}
-          <div className="hidden md:flex items-center gap-2">
-            <Link to="/aplicativos">
-              <Button variant="default" size="sm" className="flex items-center gap-1.5 bg-primary hover:bg-primary/90">
-                <Smartphone className="w-4 h-4" />
-                Aplicativos
-              </Button>
             </Link>
           </div>
 
@@ -170,11 +174,11 @@ const Navbar = () => {
               >
                 Home
               </Link>
-              
+
               <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 Cursos
               </div>
-              
+
               {pillarItems.map((item) => (
                 <Link
                   key={item.name}
@@ -188,9 +192,39 @@ const Navbar = () => {
                   Cultivee {item.name}
                 </Link>
               ))}
-              
+
               <div className="border-t border-border my-2"></div>
-              
+
+              <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Produtos
+              </div>
+
+              {productItems.map((item) => (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  className={`px-4 py-3 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                    isActive(item.href) ? "text-primary bg-primary/10" : "text-foreground hover:bg-muted"
+                  }`}
+                  onClick={() => setIsOpen(false)}
+                >
+                  <item.icon className={`w-4 h-4 ${item.color}`} />
+                  {item.name}
+                </Link>
+              ))}
+
+              <div className="border-t border-border my-2"></div>
+
+              <Link
+                to="/projeto"
+                className={`px-4 py-3 rounded-lg font-medium transition-colors ${
+                  isActive("/projeto") ? "text-primary bg-primary/10" : "text-foreground hover:bg-muted"
+                }`}
+                onClick={() => setIsOpen(false)}
+              >
+                Projeto
+              </Link>
+
               <Link
                 to="/blog"
                 className={`px-4 py-3 rounded-lg font-medium transition-colors ${
@@ -200,7 +234,7 @@ const Navbar = () => {
               >
                 Blog
               </Link>
-              
+
               <Link
                 to="/sobre"
                 className={`px-4 py-3 rounded-lg font-medium transition-colors ${
@@ -210,7 +244,7 @@ const Navbar = () => {
               >
                 Sobre
               </Link>
-              
+
               <Link
                 to="/contato"
                 className={`px-4 py-3 rounded-lg font-medium transition-colors ${
@@ -219,19 +253,6 @@ const Navbar = () => {
                 onClick={() => setIsOpen(false)}
               >
                 Contato
-              </Link>
-              
-              <div className="border-t border-border my-2"></div>
-
-              <Link
-                to="/aplicativos"
-                className={`px-4 py-3 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                  isActive("/aplicativos") ? "text-primary bg-primary/10" : "text-foreground hover:bg-muted"
-                }`}
-                onClick={() => setIsOpen(false)}
-              >
-                <Smartphone className="w-4 h-4" />
-                Aplicativos
               </Link>
             </div>
           </div>

@@ -1,22 +1,26 @@
 """
-Cultivee - Modelos do banco de dados (SQLite)
+Cultivee — Modelos do banco de dados (SQLite)
+Compartilhado por todos os modulos. Identico ao original.
 """
 
 import sqlite3
 import hashlib
 import secrets
 import os
-from pathlib import Path
+import json
 from datetime import datetime, timedelta
 
+from config import DB_PATH
 
-DB_PATH = os.environ.get("DB_PATH", "cultivee.db")
+# Garante que o diretorio do banco existe
+os.makedirs(os.path.dirname(DB_PATH) if os.path.dirname(DB_PATH) else ".", exist_ok=True)
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 
@@ -35,13 +39,27 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chip_id TEXT UNIQUE NOT NULL,
             short_id TEXT NOT NULL,
-            type TEXT NOT NULL CHECK(type IN ('cam', 'ctrl')),
+            type TEXT NOT NULL DEFAULT 'ctrl',
             name TEXT DEFAULT '',
             user_id INTEGER,
             ip TEXT DEFAULT '',
+            ssid TEXT DEFAULT '',
+            rssi INTEGER DEFAULT 0,
+            uptime INTEGER DEFAULT 0,
+            free_heap INTEGER DEFAULT 0,
+            capabilities TEXT DEFAULT '[]',
+            ctrl_data TEXT DEFAULT '{}',
             last_seen TEXT,
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS pending_commands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chip_id TEXT NOT NULL,
+            command TEXT NOT NULL,
+            params TEXT DEFAULT '{}',
+            created_at TEXT DEFAULT (datetime('now'))
         );
 
         CREATE TABLE IF NOT EXISTS tokens (
@@ -85,7 +103,7 @@ def create_user(email, password, name):
         return user_id
     except sqlite3.IntegrityError:
         conn.close()
-        return None  # Email ja existe
+        return None
 
 
 def get_user_by_email(email):
@@ -125,7 +143,6 @@ def validate_token(token):
         "SELECT user_id, expires_at FROM tokens WHERE token = ?", (token,)
     ).fetchone()
     conn.close()
-
     if not row:
         return None
     if datetime.fromisoformat(row["expires_at"]) < datetime.now():
@@ -142,42 +159,45 @@ def delete_token(token):
 
 # --- Modules ---
 
-def register_module(chip_id, short_id, module_type, ip="", ssid="", rssi=0, uptime=0, free_heap=0):
+def register_module(chip_id, short_id, ip="", ssid="", rssi=0, uptime=0, free_heap=0, ctrl_data="{}", capabilities="[]"):
     conn = get_db()
-
-    # Garante que colunas extras existem (migracao automatica)
-    try:
-        conn.execute("ALTER TABLE modules ADD COLUMN ssid TEXT DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute("ALTER TABLE modules ADD COLUMN rssi INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute("ALTER TABLE modules ADD COLUMN uptime INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute("ALTER TABLE modules ADD COLUMN free_heap INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
-
     existing = conn.execute(
         "SELECT * FROM modules WHERE chip_id = ?", (chip_id,)
     ).fetchone()
 
     now = datetime.now().isoformat()
 
+    # Auto-migrate: adiciona coluna capabilities se nao existir
+    try:
+        conn.execute("SELECT capabilities FROM modules LIMIT 0")
+    except Exception:
+        conn.execute("ALTER TABLE modules ADD COLUMN capabilities TEXT DEFAULT '[]'")
+
     if existing:
+        # Merge ctrl_data para nao sobrescrever config salva pelo app
+        try:
+            existing_data = json.loads(existing["ctrl_data"] or "{}")
+        except (json.JSONDecodeError, TypeError):
+            existing_data = {}
+        try:
+            new_data = json.loads(ctrl_data or "{}")
+        except (json.JSONDecodeError, TypeError):
+            new_data = {}
+        # Campos de config (save-config) — servidor e fonte da verdade.
+        # ESP32 apenas ecoa; nunca deve sobrescrever o que o app salvou.
+        server_keys = ("phases", "num_phases", "start_date")
+        for k in server_keys:
+            if k in existing_data:
+                new_data[k] = existing_data[k]
+        merged_ctrl = json.dumps(new_data)
         conn.execute(
-            "UPDATE modules SET ip = ?, last_seen = ?, ssid = ?, rssi = ?, uptime = ?, free_heap = ? WHERE chip_id = ?",
-            (ip, now, ssid, rssi, uptime, free_heap, chip_id)
+            "UPDATE modules SET ip = ?, last_seen = ?, ssid = ?, rssi = ?, uptime = ?, free_heap = ?, ctrl_data = ?, capabilities = ? WHERE chip_id = ?",
+            (ip, now, ssid, rssi, uptime, free_heap, merged_ctrl, capabilities, chip_id)
         )
     else:
         conn.execute(
-            "INSERT INTO modules (chip_id, short_id, type, ip, last_seen, ssid, rssi, uptime, free_heap) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (chip_id, short_id, module_type, ip, now, ssid, rssi, uptime, free_heap)
+            "INSERT INTO modules (chip_id, short_id, type, ip, last_seen, ssid, rssi, uptime, free_heap, ctrl_data, capabilities) VALUES (?, ?, 'ctrl', ?, ?, ?, ?, ?, ?, ?, ?)",
+            (chip_id, short_id, ip, now, ssid, rssi, uptime, free_heap, ctrl_data, capabilities)
         )
     conn.commit()
     conn.close()
@@ -219,7 +239,7 @@ def unpair_module(chip_id, user_id):
 def get_user_modules(user_id):
     conn = get_db()
     modules = conn.execute(
-        "SELECT * FROM modules WHERE user_id = ? ORDER BY type, name", (user_id,)
+        "SELECT * FROM modules WHERE user_id = ? ORDER BY name", (user_id,)
     ).fetchall()
     conn.close()
     return [dict(m) for m in modules]
@@ -234,6 +254,86 @@ def get_module_by_short_id(short_id):
     return dict(module) if module else None
 
 
+# Polling adaptativo via banco (compativel com multi-worker)
+POLL_FAST = 2000      # 2s quando ha atividade
+POLL_NORMAL = 10000   # 10s quando idle
+ACTIVITY_TIMEOUT = 60  # 60s sem atividade volta ao normal
+
+
+def mark_activity(chip_id):
+    """Marca atividade no banco (compartilhado entre workers)."""
+    conn = get_db()
+    now = datetime.now().isoformat()
+    conn.execute(
+        "UPDATE modules SET ctrl_data = json_set(COALESCE(ctrl_data,'{}'), '$.last_activity', ?) WHERE chip_id = ?",
+        (now, chip_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_poll_interval(chip_id):
+    """Retorna intervalo baseado na ultima atividade (do banco)."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT json_extract(ctrl_data, '$.last_activity') as la FROM modules WHERE chip_id = ?",
+        (chip_id,)
+    ).fetchone()
+    conn.close()
+    if row and row["la"]:
+        try:
+            last = datetime.fromisoformat(row["la"])
+            if (datetime.now() - last).total_seconds() < ACTIVITY_TIMEOUT:
+                return POLL_FAST
+        except (ValueError, TypeError):
+            pass
+    return POLL_NORMAL
+
+
+def update_ctrl_data(chip_id, updates):
+    """Atualiza campos especificos no ctrl_data do modulo (merge parcial)."""
+    conn = get_db()
+    row = conn.execute("SELECT ctrl_data FROM modules WHERE chip_id = ?", (chip_id,)).fetchone()
+    if not row:
+        conn.close()
+        return
+    try:
+        data = json.loads(row["ctrl_data"] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        data = {}
+    data.update(updates)
+    conn.execute(
+        "UPDATE modules SET ctrl_data = ? WHERE chip_id = ?",
+        (json.dumps(data), chip_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def add_pending_command(chip_id, command, params="{}"):
+    mark_activity(chip_id)
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO pending_commands (chip_id, command, params) VALUES (?, ?, ?)",
+        (chip_id, command, params)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_pending_commands(chip_id):
+    conn = get_db()
+    cmds = conn.execute(
+        "SELECT * FROM pending_commands WHERE chip_id = ? ORDER BY id",
+        (chip_id,)
+    ).fetchall()
+    # Deleta apos ler
+    conn.execute("DELETE FROM pending_commands WHERE chip_id = ?", (chip_id,))
+    conn.commit()
+    conn.close()
+    return [dict(c) for c in cmds]
+
+
 def get_module_by_chip_id(chip_id):
     conn = get_db()
     module = conn.execute(
@@ -241,61 +341,3 @@ def get_module_by_chip_id(chip_id):
     ).fetchone()
     conn.close()
     return dict(module) if module else None
-
-
-def get_capture_interval(chip_id):
-    """Retorna intervalo de captura em segundos (default 60)."""
-    conn = get_db()
-    try:
-        conn.execute("ALTER TABLE modules ADD COLUMN capture_interval INTEGER DEFAULT 60")
-    except sqlite3.OperationalError:
-        pass
-    row = conn.execute(
-        "SELECT capture_interval FROM modules WHERE chip_id = ?", (chip_id,)
-    ).fetchone()
-    conn.close()
-    return row["capture_interval"] if row and row["capture_interval"] else 60
-
-
-def set_capture_interval(chip_id, interval_seconds):
-    """Define intervalo de captura em segundos."""
-    conn = get_db()
-    try:
-        conn.execute("ALTER TABLE modules ADD COLUMN capture_interval INTEGER DEFAULT 60")
-    except sqlite3.OperationalError:
-        pass
-    conn.execute(
-        "UPDATE modules SET capture_interval = ? WHERE chip_id = ?",
-        (interval_seconds, chip_id)
-    )
-    conn.commit()
-    conn.close()
-
-
-def get_recording(chip_id):
-    """Retorna se gravacao esta ativa (default False)."""
-    conn = get_db()
-    try:
-        conn.execute("ALTER TABLE modules ADD COLUMN recording INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
-    row = conn.execute(
-        "SELECT recording FROM modules WHERE chip_id = ?", (chip_id,)
-    ).fetchone()
-    conn.close()
-    return bool(row["recording"]) if row and row["recording"] else False
-
-
-def set_recording(chip_id, active):
-    """Ativa/desativa gravacao."""
-    conn = get_db()
-    try:
-        conn.execute("ALTER TABLE modules ADD COLUMN recording INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
-    conn.execute(
-        "UPDATE modules SET recording = ? WHERE chip_id = ?",
-        (1 if active else 0, chip_id)
-    )
-    conn.commit()
-    conn.close()

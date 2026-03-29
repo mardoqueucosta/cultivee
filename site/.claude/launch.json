@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cultivee-site",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 8080,
+      "cwd": "D:/Google-Drive/01-projetos-claude/cultivee/site"
+    }
+  ]
+}

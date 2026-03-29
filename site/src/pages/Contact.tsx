@@ -54,7 +54,7 @@ const ContactPage = () => {
 
   const contactInfo = [
     { icon: Mail, label: "Email", value: "contato@cultivee.com.br", href: "mailto:contato@cultivee.com.br" },
-    { icon: Phone, label: "WhatsApp", value: "+55 (19) 99999-9999", href: "https://wa.me/5519999999999" },
+    { icon: Phone, label: "WhatsApp", value: "+55 (19) 99280-5563", href: "https://wa.me/5519992805563" },
     { icon: MapPin, label: "Localização", value: "Piracicaba, SP - Brasil", href: null }
   ];
 
@@ -235,7 +235,7 @@ const ContactPage = () => {
                   className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white"
                   asChild
                 >
-                  <a href="https://wa.me/5519999999999" target="_blank" rel="noopener noreferrer">
+                  <a href="https://wa.me/5519992805563" target="_blank" rel="noopener noreferrer">
                     <MessageCircle className="w-4 h-4 mr-2" />
                     Iniciar conversa
                   </a>

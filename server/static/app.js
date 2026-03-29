@@ -1,11 +1,20 @@
 // =====================================================================
-// Cultivee PWA — App Logic
+// Cultivee PWA — App Logic Unificado
+// Config injetada pelo servidor via window.CULTIVEE (espelha firmware)
 // =====================================================================
 
-let token = localStorage.getItem("cultivee_token");
-let user = JSON.parse(localStorage.getItem("cultivee_user") || "null");
+const APP_VERSION = '1.0.1';
+const C = window.CULTIVEE || {};
+const API_PREFIX = C.apiPrefix || '/api/ctrl';
+const STORAGE_PREFIX = C.storagePrefix || 'cultivee_ctrl';
+const PRODUCT_NAME = C.productName || 'Cultivee';
+const DEFAULT_NAME = C.defaultName || 'Hidroponia';
+const CAMERA_ENABLED = C.cameraEnabled || false;
+
+let token = localStorage.getItem(`${STORAGE_PREFIX}_token`);
+let user = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}_user`) || "null");
 let modules = [];
-let camChipId = null;
+let activeCtrlChipId = null;
 
 // --- API helper ---
 
@@ -66,8 +75,8 @@ async function doLogin() {
         });
         token = data.token;
         user = data.user;
-        localStorage.setItem("cultivee_token", token);
-        localStorage.setItem("cultivee_user", JSON.stringify(user));
+        localStorage.setItem(`${STORAGE_PREFIX}_token`, token);
+        localStorage.setItem(`${STORAGE_PREFIX}_user`, JSON.stringify(user));
         enterApp();
     } catch (e) {
         showAuthError(e.message);
@@ -86,8 +95,8 @@ async function doRegister() {
         });
         token = data.token;
         user = data.user;
-        localStorage.setItem("cultivee_token", token);
-        localStorage.setItem("cultivee_user", JSON.stringify(user));
+        localStorage.setItem(`${STORAGE_PREFIX}_token`, token);
+        localStorage.setItem(`${STORAGE_PREFIX}_user`, JSON.stringify(user));
         enterApp();
     } catch (e) {
         showAuthError(e.message);
@@ -98,8 +107,8 @@ function doLogout() {
     api("/api/auth/logout", { method: "POST" }).catch(() => {});
     token = null;
     user = null;
-    localStorage.removeItem("cultivee_token");
-    localStorage.removeItem("cultivee_user");
+    localStorage.removeItem(`${STORAGE_PREFIX}_token`);
+    localStorage.removeItem(`${STORAGE_PREFIX}_user`);
     document.getElementById("auth-screen").classList.remove("hidden");
     document.getElementById("app-screen").classList.add("hidden");
 }
@@ -113,7 +122,6 @@ function enterApp() {
     document.getElementById("app-screen").classList.remove("hidden");
     document.getElementById("nav-user").textContent = user.name;
     loadModules();
-    loadCarousel();
     setTimeout(checkPendingCode, 500);
 }
 
@@ -155,82 +163,45 @@ function formatUptime(seconds) {
     return `${seconds}s`;
 }
 
-function formatInterval(seconds) {
-    if (seconds < 60) return `${seconds}s`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
-    return `${Math.floor(seconds / 3600)}h`;
-}
-
-async function setCaptureInterval(chipId, interval) {
-    try {
-        await api("/api/modules/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chip_id: chipId, capture_interval: parseInt(interval) })
-        });
-        const selects = document.querySelectorAll(".config-select");
-        selects.forEach(s => {
-            if (s.value == interval) {
-                s.style.borderColor = "var(--primary)";
-                setTimeout(() => s.style.borderColor = "", 1500);
-            }
-        });
-    } catch (e) {
-        alert("Erro ao alterar intervalo: " + e.message);
-    }
-}
-
-async function toggleRecording() {
-    const cam = modules.find(m => m.type === "cam" && m.online);
-    if (!cam) return;
-
-    const newState = !cam.recording;
-    try {
-        await api("/api/modules/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chip_id: cam.chip_id, recording: newState })
-        });
-        cam.recording = newState;
-        updateRecButton(newState);
-    } catch (e) {
-        alert("Erro: " + e.message);
-    }
-}
-
-function updateRecButton(recording) {
-    const btn = document.getElementById("btn-rec");
-    const dot = document.getElementById("rec-dot");
-    const label = document.getElementById("rec-label");
-    if (!btn) return;
-
-    if (recording) {
-        btn.classList.add("recording");
-        label.textContent = "GRAVANDO";
-    } else {
-        btn.classList.remove("recording");
-        label.textContent = "REC";
-    }
-}
-
 // =====================================================================
 // Modules
 // =====================================================================
 
+let _lastModulesKey = "";
+
+function forceFullRefresh() {
+    _lastModulesKey = "";
+    _lastCtrlKey = "";
+    if (activeCtrlChipId) loadCtrlStatus(activeCtrlChipId);
+    loadModules();
+}
+
+function modulesVisualKey(mods) {
+    return mods.map(m => {
+        const c = m.ctrl_data || {};
+        return `${m.chip_id}:${m.online}:${m.name}:${c.light}:${c.pump}:${c.mode}:${c.phase}`;
+    }).join("|");
+}
+
 async function loadModules() {
     try {
         const data = await api("/api/modules");
+        const key = modulesVisualKey(data.modules);
         modules = data.modules;
+        // So re-renderiza se algo visual mudou
+        if (key === _lastModulesKey) return;
+        _lastModulesKey = key;
         renderModules();
 
-        // Procura camera para livestream
-        const cam = modules.find(m => m.type === "cam" && m.online);
-        if (cam) {
-            camChipId = cam.chip_id;
-            document.getElementById("section-stream").classList.remove("hidden");
-            loadStream();
+        // Se tem modulo online, mostra dashboard
+        const online = modules.find(m => m.online);
+        if (online) {
+            activeCtrlChipId = online.chip_id;
+            document.getElementById("section-dashboard").classList.remove("hidden");
+            loadCtrlStatus(online.chip_id);
         } else {
-            document.getElementById("section-stream").classList.add("hidden");
+            document.getElementById("section-dashboard").classList.add("hidden");
+            activeCtrlChipId = null;
         }
     } catch (e) {
         if (e.message === "Nao autenticado") doLogout();
@@ -241,26 +212,30 @@ function renderModules() {
     const list = document.getElementById("modules-list");
 
     if (modules.length === 0) {
-        list.innerHTML = '<div class="empty-state"><p>Nenhum modulo vinculado.</p><button class="btn-add" onclick="showPairModal()" style="margin-top:0.5rem">+ Adicionar modulo</button></div>';
+        list.innerHTML = `<div class="empty-state">
+            <p>Nenhum dispositivo vinculado</p>
+            <p style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem">Conecte seu ESP32 na rede <strong>${C.apSsid || 'Cultivee'}</strong> para configurar</p>
+            <button class="btn-add" onclick="showPairModal()" style="margin-top:0.75rem">+ Adicionar dispositivo</button>
+        </div>`;
         return;
     }
 
     list.innerHTML = modules.map(m => {
-        const icon = m.type === "cam"
-            ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>'
-            : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>';
-        const name = m.name || m.type.toUpperCase();
+        const name = m.name || DEFAULT_NAME;
+        const ctrl = m.ctrl_data || {};
 
         if (m.online) {
             const rssiBar = getRssiBar(m.rssi);
-            const rssiLabel = getRssiLabel(m.rssi);
-            // --- ONLINE: card compacto + detalhes expansiveis ---
+            const lightIcon = ctrl.light ? '&#128161;' : '&#9899;';
+            const pumpIcon = ctrl.pump ? '&#128167;' : '&#9899;';
+            const phase = ctrl.phase || '---';
+
             return `<div class="module-compact" onclick="toggleModuleDetails('${m.chip_id}')">
                 <div class="module-compact-row">
                     <div class="module-compact-info">
                         <span class="status-dot online"></span>
                         <span class="module-compact-name">${name}</span>
-                        <span class="module-compact-meta">${m.ssid || ''} ${rssiBar}</span>
+                        <span class="module-compact-meta">${lightIcon} ${pumpIcon} ${phase}</span>
                     </div>
                     <div class="module-compact-actions">
                         <button class="btn-add" onclick="showPairModal();event.stopPropagation()">+</button>
@@ -273,7 +248,7 @@ function renderModules() {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
                             <div class="stat-content">
                                 <span class="stat-value">${m.ssid || '---'}</span>
-                                <span class="stat-label">${rssiBar} ${rssiLabel}</span>
+                                <span class="stat-label">${rssiBar} ${getRssiLabel(m.rssi)}</span>
                             </div>
                         </div>
                         <div class="stat-item">
@@ -291,44 +266,31 @@ function renderModules() {
                             </div>
                         </div>
                     </div>
-                    <div class="module-config">
-                        <div class="config-item">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-                            <span class="config-label">Capturar a cada:</span>
-                            <select class="config-select" onchange="setCaptureInterval('${m.chip_id}', this.value)">
-                                <option value="10" ${m.capture_interval == 10 ? 'selected' : ''}>10s</option>
-                                <option value="30" ${m.capture_interval == 30 ? 'selected' : ''}>30s</option>
-                                <option value="60" ${m.capture_interval == 60 || !m.capture_interval ? 'selected' : ''}>1 min</option>
-                                <option value="300" ${m.capture_interval == 300 ? 'selected' : ''}>5 min</option>
-                                <option value="600" ${m.capture_interval == 600 ? 'selected' : ''}>10 min</option>
-                                <option value="1800" ${m.capture_interval == 1800 ? 'selected' : ''}>30 min</option>
-                                <option value="3600" ${m.capture_interval == 3600 ? 'selected' : ''}>1 hora</option>
-                            </select>
-                        </div>
+                    <div class="module-actions-row">
+                        <span class="module-code-label">Código: <strong>${m.short_id || '---'}</strong></span>
+                        <button class="btn-danger-small" onclick="unpairModule('${m.chip_id}');event.stopPropagation()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                            Desvincular
+                        </button>
                     </div>
                 </div>
             </div>`;
         } else {
-            // --- OFFLINE: card compacto com botao de setup ---
             return `<div class="module-compact module-compact-offline">
                 <div class="module-compact-row">
                     <div class="module-compact-info">
                         <span class="status-dot offline"></span>
                         <span class="module-compact-name">${name}</span>
-                        <span class="module-compact-meta" style="color:#999">Offline</span>
+                        <span class="module-compact-meta" style="color:var(--text-dim)">Offline</span>
                     </div>
-                    <a href="http://192.168.4.1" target="_blank" class="btn-setup-small" onclick="event.stopPropagation()">Configurar WiFi</a>
-                </div>
-                <div style="padding:0.5rem 0.75rem 0.75rem;font-size:0.75rem;color:#888;border-top:1px solid #2a2a3e">
-                    Conecte na rede <strong>Cultivee-Cam</strong> ou <strong>Cultivee-Wrover</strong> para configurar
+                    <a href="http://192.168.4.1" target="_blank" class="btn-setup-small" onclick="event.stopPropagation()">Configurar</a>
                 </div>
             </div>`;
         }
     }).join("");
 
-    // Atualiza botao REC
-    const cam = modules.find(m => m.type === "cam" && m.online);
-    if (cam) updateRecButton(cam.recording);
+    // CAMERA MODULE — unico ponto de integracao
+    if (CAMERA_ENABLED) cam_render();
 }
 
 function toggleModuleDetails(chipId) {
@@ -340,21 +302,422 @@ function toggleModuleDetails(chipId) {
     }
 }
 
-async function toggleGpio(chipId, gpioName) {
+async function unpairModule(chipId) {
+    if (!confirm('Desvincular este módulo da sua conta?')) return;
     try {
-        await api(`/api/gpio/${chipId}?name=${gpioName}&action=toggle`);
+        await api('/api/modules/unpair', { method: 'POST', body: { chip_id: chipId } });
         loadModules();
     } catch (e) {
-        console.error("Erro GPIO:", e);
+        alert('Erro: ' + e.message);
+    }
+}
+
+// =====================================================================
+// Ctrl Dashboard
+// =====================================================================
+
+let _lastCtrlKey = "";
+
+function ctrlVisualKey(d) {
+    return `${d.light}:${d.pump}:${d.mode}:${d.phase}:${d.phase_index}:${d.num_phases}:${d.cycle_day}:${d.start_date}:${d.ntp_synced}:${d.camera_ready}`;
+}
+
+async function loadCtrlStatus(chipId) {
+    try {
+        const data = await api(`${API_PREFIX}/${chipId}/status`);
+        // Se houve toggle recente, preserva estado local dos campos alterados
+        if (localState && (Date.now() - lastToggleTime < TOGGLE_COOLDOWN)) {
+            data.light = localState.light;
+            data.pump = localState.pump;
+            data.mode = localState.mode;
+        }
+        const key = ctrlVisualKey(data);
+        if (key === _lastCtrlKey) return;
+        _lastCtrlKey = key;
+        renderDashboard(chipId, data);
+    } catch (e) {
+        console.error("Erro status ctrl:", e);
+        document.getElementById("dashboard-content").innerHTML =
+            '<div class="card"><div class="empty-state"><p>Erro ao carregar status</p></div></div>';
+    }
+}
+
+function renderDashboard(chipId, data) {
+    // Salva estado local para updates otimistas
+    localState = { ...data };
+
+    const container = document.getElementById("dashboard-content");
+
+    const cycleDay = data.cycle_day || 0;
+    const phase = data.phase || "---";
+    const phaseIndex = data.phase_index || 0;
+    const numPhases = data.num_phases || 0;
+    const lightOn = data.light || false;
+    const pumpOn = data.pump || false;
+    const modeAuto = data.mode === "auto";
+    const timeStr = data.time || "--:--:--";
+    const ntpSynced = data.ntp_synced || false;
+    const startDateRaw = data.start_date || "---";
+    let startDate = startDateRaw;
+    if (startDateRaw && startDateRaw.includes("-")) {
+        const [y, m, d] = startDateRaw.split("-");
+        startDate = `${d}/${m}/${y}`;
+    }
+
+    // Phase list - calculate days elapsed per phase
+    let phasesHtml = '';
+    if (data.phases && data.phases.length) {
+        let cumDays = 0;
+        const phaseStartDays = [];
+        data.phases.forEach(p => {
+            phaseStartDays.push(cumDays);
+            cumDays += (p.days > 0 ? p.days : 0);
+        });
+
+        phasesHtml = data.phases.map((p, i) => {
+            const isActive = i === phaseIndex;
+            const isPast = i < phaseIndex;
+            const lOn = `${String(p.lightOnHour).padStart(2, '0')}:${String(p.lightOnMin).padStart(2, '0')}`;
+            const lOff = `${String(p.lightOffHour).padStart(2, '0')}:${String(p.lightOffMin).padStart(2, '0')}`;
+
+            let diasInfo = '';
+            let progressBar = '';
+            if (p.days > 0) {
+                if (isActive) {
+                    const daysInPhase = cycleDay - phaseStartDays[i];
+                    const clamped = Math.min(daysInPhase, p.days);
+                    const pct = Math.round((clamped / p.days) * 100);
+                    diasInfo = `<span class="phase-item-days">${clamped} de ${p.days} dias</span>`;
+                    progressBar = `<div class="phase-mini-progress"><div class="phase-mini-bar" style="width:${pct}%"></div></div>`;
+                } else if (isPast) {
+                    diasInfo = `<span class="phase-item-days phase-done">${p.days}/${p.days} dias &#10003;</span>`;
+                } else {
+                    diasInfo = `<span class="phase-item-days">${p.days} dias</span>`;
+                }
+            } else {
+                diasInfo = `<span class="phase-item-days">&#8734;</span>`;
+            }
+
+            return `<div class="phase-item ${isActive ? 'active' : ''} ${isPast ? 'past' : ''}">
+                <div class="phase-item-header">
+                    <span class="phase-item-name">${p.name} ${isActive ? '<span class="phase-badge">ATIVA</span>' : ''}</span>
+                    ${diasInfo}
+                </div>
+                ${progressBar}
+                <div class="phase-item-details">
+                    &#128161; ${lOn} - ${lOff}<br>
+                    &#128167; Dia: ${p.pumpOnDay}/${p.pumpOffDay}min | Noite: ${p.pumpOnNight}/${p.pumpOffNight}min
+                </div>
+            </div>`;
+        }).join("");
+    }
+
+    // Controls: only show toggle buttons in manual mode
+    const lightPending = pendingCommands.has('light');
+    const pumpPending = pendingCommands.has('pump');
+    const modePending = pendingCommands.has('mode');
+
+    let controlsHtml = '';
+    if (!modeAuto) {
+        controlsHtml = `
+            <div class="controls-row">
+                <button class="ctrl-btn ${lightOn ? 'on' : 'off'} ${lightPending ? 'pending' : ''}" onclick="toggleRelay('${chipId}', 'light')" ${lightPending ? 'disabled' : ''}>
+                    ${lightPending ? '<span class="btn-spinner"></span>' : `<span class="ctrl-btn-icon">${lightOn ? '&#128161;' : '&#9899;'}</span>`}
+                    <span>${lightPending ? 'Enviando...' : `LUZ ${lightOn ? 'ON' : 'OFF'}`}</span>
+                </button>
+                <button class="ctrl-btn ${pumpOn ? 'on pump-on' : 'off'} ${pumpPending ? 'pending' : ''}" onclick="toggleRelay('${chipId}', 'pump')" ${pumpPending ? 'disabled' : ''}>
+                    ${pumpPending ? '<span class="btn-spinner"></span>' : `<span class="ctrl-btn-icon">${pumpOn ? '&#128167;' : '&#9899;'}</span>`}
+                    <span>${pumpPending ? 'Enviando...' : `BOMBA ${pumpOn ? 'ON' : 'OFF'}`}</span>
+                </button>
+            </div>`;
+    }
+
+    // Status indicators (always visible)
+    const lightStatusClass = lightOn ? 'status-on' : 'status-off';
+    const pumpStatusClass = pumpOn ? 'status-on pump' : 'status-off';
+
+    // Format current date
+    const now = new Date();
+    const dateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+
+    container.innerHTML = `
+        <div class="card">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="label">Ciclo</div>
+                    <div class="value">Dia ${cycleDay}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Fase</div>
+                    <div class="value small">${phase}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Início</div>
+                    <div class="value small">${startDate}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Hoje</div>
+                    <div class="value small">${dateStr}</div>
+                </div>
+            </div>
+
+            <div class="status-indicators">
+                <div class="status-indicator ${lightStatusClass}">
+                    <span class="status-indicator-dot"></span>
+                    <span>Luz ${lightOn ? 'Ligada' : 'Desligada'}</span>
+                </div>
+                <div class="status-indicator ${pumpStatusClass}">
+                    <span class="status-indicator-dot"></span>
+                    <span>Bomba ${pumpOn ? 'Ligada' : 'Desligada'}</span>
+                </div>
+            </div>
+
+            <button class="ctrl-btn-mode ${modeAuto ? 'auto' : 'manual'} ${modePending ? 'pending' : ''}" onclick="toggleRelay('${chipId}', 'mode')" ${modePending ? 'disabled' : ''}>
+                ${modePending ? '<span class="btn-spinner"></span> Alterando...' : (modeAuto ? '&#9881; Modo Automático' : '&#9995; Modo Manual')}
+            </button>
+
+            ${controlsHtml}
+        </div>
+
+        ${phasesHtml ? `
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                    <h2>Fases Configuradas</h2>
+                </div>
+                <button class="btn-config" onclick="showConfigModal('${chipId}')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    Configurar
+                </button>
+            </div>
+            ${phasesHtml}
+        </div>` : ''}
+    `;
+}
+
+// Estado local para update otimista
+let localState = null;
+let lastToggleTime = 0;
+const TOGGLE_COOLDOWN = 35000; // Bloqueia refresh por 35s (ESP32 registra a cada 30s)
+
+let pendingCommands = new Set();
+
+async function toggleRelay(chipId, device) {
+    // Update otimista: muda estado local ANTES da resposta
+    if (localState) {
+        if (device === "light") localState.light = !localState.light;
+        else if (device === "pump") localState.pump = !localState.pump;
+        else if (device === "mode") localState.mode = localState.mode === "auto" ? "manual" : "auto";
+        lastToggleTime = Date.now();
+        pendingCommands.add(device);
+        renderDashboard(chipId, localState);
+    }
+
+    try {
+        await api(`${API_PREFIX}/${chipId}/relay?device=${device}&action=toggle`);
+    } catch (e) {
+        console.error("Erro relay:", e);
+    }
+
+    // Aguarda confirmacao do ESP32 (poll a cada 1.5s, max 15s)
+    let confirmed = false;
+    for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 1500));
+        try {
+            const data = await api(`${API_PREFIX}/${chipId}/status`);
+            if (device === "light" && data.light === localState.light) { confirmed = true; break; }
+            if (device === "pump" && data.pump === localState.pump) { confirmed = true; break; }
+            if (device === "mode" && data.mode === localState.mode) { confirmed = true; break; }
+        } catch (e) { break; }
+    }
+
+    pendingCommands.delete(device);
+    _lastCtrlKey = "";  // Reset cache para proximo poll atualizar
+    if (confirmed) {
+        renderDashboard(chipId, localState);
+    } else {
+        loadCtrlStatus(chipId);
+    }
+}
+
+// =====================================================================
+// Config Modal
+// =====================================================================
+
+let configChipId = null;
+let configPhases = [];
+
+async function showConfigModal(chipId) {
+    configChipId = chipId;
+    try {
+        let data;
+        try {
+            data = await api(`${API_PREFIX}/${chipId}/phases?live=1`);
+        } catch (e) {
+            data = await api(`${API_PREFIX}/${chipId}/status`);
+        }
+        configPhases = data.phases || [];
+        renderConfigModal(data);
+        document.getElementById("config-modal").classList.remove("hidden");
+    } catch (e) {
+        alert("Erro ao carregar configuração: " + e.message);
+    }
+}
+
+function closeConfigModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById("config-modal").classList.add("hidden");
+}
+
+function renderConfigModal(data) {
+    const container = document.getElementById("config-content");
+    const today = new Date().toISOString().split('T')[0];
+    const startDate = data.start_date || today;
+    const phases = data.phases || [];
+
+    let phasesHtml = phases.map((p, i) => {
+        const lOnH = p.lightOnHour != null ? p.lightOnHour : 6;
+        const lOnM = p.lightOnMin != null ? p.lightOnMin : 0;
+        const lOffH = p.lightOffHour != null ? p.lightOffHour : 18;
+        const lOffM = p.lightOffMin != null ? p.lightOffMin : 0;
+        const lOn = `${String(lOnH).padStart(2, '0')}:${String(lOnM).padStart(2, '0')}`;
+        const lOff = `${String(lOffH).padStart(2, '0')}:${String(lOffM).padStart(2, '0')}`;
+        const pod = p.pumpOnDay || 15;
+        const pfd = p.pumpOffDay || 15;
+        const pon = p.pumpOnNight || 15;
+        const pfn = p.pumpOffNight || 45;
+        const days = p.days != null ? p.days : 7;
+        const name = p.name || `Fase ${i+1}`;
+        return `<div class="config-phase">
+            <div class="config-phase-header">
+                <span class="config-phase-title">Fase ${i + 1}</span>
+                ${phases.length > 1 ? `<button class="config-remove" onclick="removePhase(${i})">&#10005;</button>` : ''}
+            </div>
+            <div class="config-grid">
+                <div class="config-field">
+                    <label>Nome</label>
+                    <input type="text" id="cfg-n${i}" value="${name}">
+                </div>
+                <div class="config-field">
+                    <label>Dias</label>
+                    <input type="number" id="cfg-d${i}" value="${days}" min="0" placeholder="0=infinito">
+                </div>
+            </div>
+            <div class="config-section-label">&#128161; Iluminação</div>
+            <div class="config-grid">
+                <div class="config-field">
+                    <label>Liga</label>
+                    <input type="time" id="cfg-lon${i}" value="${lOn}">
+                </div>
+                <div class="config-field">
+                    <label>Desliga</label>
+                    <input type="time" id="cfg-loff${i}" value="${lOff}">
+                </div>
+            </div>
+            <div class="config-section-label">&#128167; Irrigação Dia</div>
+            <div class="config-grid">
+                <div class="config-field">
+                    <label>ON (min)</label>
+                    <input type="number" id="cfg-pod${i}" value="${pod}" min="1">
+                </div>
+                <div class="config-field">
+                    <label>OFF (min)</label>
+                    <input type="number" id="cfg-pfd${i}" value="${pfd}" min="1">
+                </div>
+            </div>
+            <div class="config-section-label">&#127769; Irrigação Noite</div>
+            <div class="config-grid">
+                <div class="config-field">
+                    <label>ON (min)</label>
+                    <input type="number" id="cfg-pon${i}" value="${pon}" min="1">
+                </div>
+                <div class="config-field">
+                    <label>OFF (min)</label>
+                    <input type="number" id="cfg-pfn${i}" value="${pfn}" min="1">
+                </div>
+            </div>
+        </div>`;
+    }).join("");
+
+    container.innerHTML = `
+        <div class="config-field" style="margin-bottom:1rem">
+            <label>Data de Início do Cultivo</label>
+            <input type="date" id="cfg-start-date" value="${startDate}">
+        </div>
+        <div id="config-phases">${phasesHtml}</div>
+        <div class="config-actions">
+            <button class="btn-primary" onclick="saveConfig()">Salvar</button>
+        </div>
+        <div class="config-actions" style="margin-top:0.5rem">
+            <button class="btn-secondary" onclick="addPhase()">+ Adicionar Fase</button>
+            <button class="btn-danger-outline" onclick="resetPhases()">Restaurar Padrão</button>
+        </div>
+    `;
+}
+
+async function saveConfig() {
+    const phases = document.querySelectorAll('.config-phase');
+    const data = {
+        start_date: document.getElementById('cfg-start-date').value,
+        num_phases: phases.length
+    };
+
+    phases.forEach((_, i) => {
+        data[`n${i}`] = document.getElementById(`cfg-n${i}`).value;
+        data[`d${i}`] = document.getElementById(`cfg-d${i}`).value;
+        data[`lon${i}`] = document.getElementById(`cfg-lon${i}`).value;
+        data[`loff${i}`] = document.getElementById(`cfg-loff${i}`).value;
+        data[`pod${i}`] = document.getElementById(`cfg-pod${i}`).value;
+        data[`pfd${i}`] = document.getElementById(`cfg-pfd${i}`).value;
+        data[`pon${i}`] = document.getElementById(`cfg-pon${i}`).value;
+        data[`pfn${i}`] = document.getElementById(`cfg-pfn${i}`).value;
+    });
+
+    try {
+        await api(`${API_PREFIX}/${configChipId}/save-config`, {
+            method: "POST",
+            body: data
+        });
+        closeConfigModal();
+        lastToggleTime = Date.now();
+        setTimeout(forceFullRefresh, 500);
+    } catch (e) {
+        alert("Erro ao salvar: " + e.message);
+    }
+}
+
+async function addPhase() {
+    try {
+        await api(`${API_PREFIX}/${configChipId}/add-phase`);
+        showConfigModal(configChipId);
+    } catch (e) {
+        alert("Erro: " + e.message);
+    }
+}
+
+async function removePhase(idx) {
+    if (!confirm('Remover esta fase?')) return;
+    try {
+        await api(`${API_PREFIX}/${configChipId}/remove-phase?idx=${idx}`);
+        showConfigModal(configChipId);
+    } catch (e) {
+        alert("Erro: " + e.message);
+    }
+}
+
+async function resetPhases() {
+    if (!confirm('Restaurar fases padrão?')) return;
+    try {
+        await api(`${API_PREFIX}/${configChipId}/reset-phases`);
+        showConfigModal(configChipId);
+    } catch (e) {
+        alert("Erro: " + e.message);
     }
 }
 
 // =====================================================================
 // Pair Modal
-// =====================================================================
-
-// =====================================================================
-// Setup Wizard
 // =====================================================================
 
 function showPairModal() {
@@ -368,16 +731,15 @@ function closePairModal(event) {
 }
 
 function wizardShowStep(n) {
-    const allSteps = ["0", "1", "2"];
-    allSteps.forEach(id => {
+    ["0", "1", "2"].forEach(id => {
         const el = document.getElementById("wizard-step-" + id);
         if (el) el.classList.toggle("hidden", id != n);
     });
     if (n === 2 || n === "2") {
-        document.getElementById("pair-code").value = espModuleInfo ? espModuleInfo.short_id : "";
+        document.getElementById("pair-code").value = "";
         document.getElementById("pair-name").value = "";
         document.getElementById("pair-error").classList.add("hidden");
-        if (!espModuleInfo) setTimeout(() => document.getElementById("pair-code").focus(), 100);
+        setTimeout(() => document.getElementById("pair-code").focus(), 100);
     }
 }
 
@@ -387,14 +749,6 @@ function wizardStart(mode) {
 
 function wizardNext(step) { wizardShowStep(step); }
 function wizardBack(step) { wizardShowStep(step); }
-
-function copyUrl() {
-    navigator.clipboard.writeText("http://192.168.4.1").then(() => {
-        const el = document.getElementById("url-copy-text");
-        el.textContent = "copiado!";
-        setTimeout(() => el.textContent = "copiar", 2000);
-    }).catch(() => {});
-}
 
 async function doPair() {
     try {
@@ -407,7 +761,6 @@ async function doPair() {
         });
         closePairModal();
         loadModules();
-        loadCarousel();
     } catch (e) {
         const el = document.getElementById("pair-error");
         el.textContent = e.message;
@@ -416,388 +769,364 @@ async function doPair() {
 }
 
 // =====================================================================
-// Stream
-// =====================================================================
-
-let streamActive = false;
-
-function loadStream() {
-    streamActive = true;
-    refreshFrame();
-}
-
-function timeAgo(dateStr, timeStr) {
-    // dateStr: "2026-03-20", timeStr: "21:17:10"
-    const dt = new Date(dateStr + "T" + timeStr);
-    const now = new Date();
-    const diffS = Math.floor((now - dt) / 1000);
-    if (diffS < 5) return "agora";
-    if (diffS < 60) return `há ${diffS}s`;
-    const diffM = Math.floor(diffS / 60);
-    if (diffM < 60) return `há ${diffM}min`;
-    const diffH = Math.floor(diffM / 60);
-    if (diffH < 24) return `há ${diffH}h`;
-    const diffD = Math.floor(diffH / 24);
-    return `há ${diffD}d`;
-}
-
-let lastFrameTime = null;
-
-function updateStreamInfo() {
-    const info = document.getElementById("stream-info");
-    if (!info) return;
-    if (!lastFrameTime) {
-        info.textContent = "";
-        return;
-    }
-    const now = new Date();
-    const diff = Math.floor((now - lastFrameTime) / 1000);
-    const timeStr = lastFrameTime.toLocaleTimeString("pt-BR");
-    if (diff < 2) {
-        info.innerHTML = `<span class="stream-time">📷 ${timeStr}</span> <span class="stream-ago">agora</span>`;
-    } else if (diff < 60) {
-        info.innerHTML = `<span class="stream-time">📷 ${timeStr}</span> <span class="stream-ago">há ${diff}s</span>`;
-    } else {
-        const min = Math.floor(diff / 60);
-        info.innerHTML = `<span class="stream-time">📷 ${timeStr}</span> <span class="stream-ago">há ${min}min</span>`;
-    }
-}
-
-setInterval(updateStreamInfo, 1000);
-
-function refreshFrame() {
-    if (!streamActive || !camChipId) return;
-    const next = new Image();
-    next.onload = function () {
-        const el = document.getElementById("stream");
-        el.src = next.src;
-        el.classList.remove("hidden");
-        document.getElementById("stream-offline").classList.add("hidden");
-        document.getElementById("live-badge").classList.add("active");
-        lastFrameTime = new Date();
-        updateStreamInfo();
-        setTimeout(refreshFrame, 1000);
-    };
-    next.onerror = function () {
-        document.getElementById("stream").classList.add("hidden");
-        document.getElementById("stream-offline").classList.remove("hidden");
-        document.getElementById("live-badge").classList.remove("active");
-        setTimeout(refreshFrame, 3000);
-    };
-    next.src = `/api/live/${camChipId}?token=${token}&t=` + Date.now();
-}
-
-// =====================================================================
-// Carousel
-// =====================================================================
-
-let carouselImages = [];
-let carouselOffset = 0;
-const VISIBLE = 4;
-
-async function loadCarousel() {
-    try {
-        const data = await api("/api/images?page=1&per_page=50");
-        carouselImages = data.images;
-        carouselOffset = 0;
-        renderCarousel();
-    } catch (e) {
-        console.error("Erro carousel:", e);
-    }
-}
-
-function renderCarousel() {
-    const track = document.getElementById("carousel-track");
-    const counter = document.getElementById("carousel-counter");
-    const visible = carouselImages.slice(carouselOffset, carouselOffset + VISIBLE);
-    const totalPages = Math.max(1, Math.ceil(carouselImages.length / VISIBLE));
-    const currentPage = Math.floor(carouselOffset / VISIBLE) + 1;
-    counter.textContent = `${currentPage}/${totalPages}`;
-
-    if (visible.length === 0) {
-        track.innerHTML = '<div class="empty-state"><p>Nenhuma captura ainda</p></div>';
-        return;
-    }
-
-    track.innerHTML = visible.map(img => {
-        const sizeStr = img.size_kb >= 1024 ? (img.size_kb / 1024).toFixed(1) + ' MB' : img.size_kb.toFixed(0) + ' KB';
-        const ago = timeAgo(img.date, img.time);
-        return `<div class="carousel-item" onclick="openModal('${img.filename}', '${img.date} ${img.time}', ${img.size_kb})">
-            <img src="/api/images/${img.filename}?token=${token}" alt="${img.filename}" loading="lazy" />
-            <div class="capture-info">${img.date} ${img.time}<span class="capture-size"> &middot; ${sizeStr}</span></div>
-            <div class="capture-ago">${ago}</div>
-        </div>`;
-    }).join("");
-}
-
-function carouselPrev() {
-    if (carouselOffset > 0) { carouselOffset -= VISIBLE; renderCarousel(); }
-}
-function carouselNext() {
-    if (carouselOffset + VISIBLE < carouselImages.length) { carouselOffset += VISIBLE; renderCarousel(); }
-}
-
-// =====================================================================
-// Image Modal
-// =====================================================================
-
-function openModal(filename, dt, sizeKb) {
-    document.getElementById("modal-img").src = `/api/images/${filename}?token=${token}`;
-    document.getElementById("modal-info").textContent = `${dt} | ${sizeKb} KB | ${filename}`;
-    document.getElementById("modal").classList.remove("hidden");
-}
-
-function closeModal(event) {
-    if (event && event.target !== event.currentTarget) return;
-    document.getElementById("modal").classList.add("hidden");
-}
-
-document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); closePairModal(); } });
-
-// =====================================================================
 // Auto-pair from URL or localStorage
 // =====================================================================
+
+let autoPairRetries = 0;
+const AUTO_PAIR_MAX_RETRIES = 20;
 
 function checkPendingCode() {
     const params = new URLSearchParams(window.location.search);
     let code = params.get("code");
 
-    // Tenta localStorage se nao veio na URL
     if (!code) {
-        code = localStorage.getItem("cultivee_pending_code");
+        code = localStorage.getItem(`${STORAGE_PREFIX}_pending_code`);
     }
 
     if (code && token) {
-        // Limpa
-        localStorage.removeItem("cultivee_pending_code");
+        localStorage.removeItem(`${STORAGE_PREFIX}_pending_code`);
         window.history.replaceState({}, "", window.location.pathname);
 
-        // Abre modal com codigo preenchido
-        showPairModal();
-        wizardShowStep(2);
-        document.getElementById("pair-code").value = code;
-        document.getElementById("pair-name").focus();
+        // Se ja tem modulo com esse short_id vinculado, nao precisa re-pair
+        const alreadyPaired = modules.find(m => {
+            const sid = m.chip_id ? m.chip_id.slice(-4).toUpperCase() : "";
+            return sid === code.toUpperCase();
+        });
+        if (alreadyPaired) {
+            console.log("Modulo " + code + " ja vinculado, pulando auto-pair");
+            return;
+        }
+        doAutoPair(code);
     }
+}
+
+async function doAutoPair(code) {
+    const list = document.getElementById("modules-list");
+    list.innerHTML = `<div class="auto-pair-status">
+        <div class="spinner"></div>
+        <p>Conectando módulo <strong>${code}</strong>...</p>
+        <p class="auto-pair-hint">Aguardando o módulo registrar no servidor</p>
+    </div>`;
+
+    try {
+        await api("/api/modules/pair", {
+            method: "POST",
+            body: { short_id: code, name: DEFAULT_NAME }
+        });
+        autoPairRetries = 0;
+        _lastModulesKey = "";  // Forca re-render
+        loadModules();
+    } catch (e) {
+        // Se o erro indica que ja esta vinculado, tratar como sucesso
+        const errMsg = e.message || "";
+        if (errMsg.includes("vinculado") || errMsg.includes("paired")) {
+            autoPairRetries = 0;
+            _lastModulesKey = "";
+            loadModules();
+            return;
+        }
+        autoPairRetries++;
+        if (autoPairRetries < AUTO_PAIR_MAX_RETRIES) {
+            list.innerHTML = `<div class="auto-pair-status">
+                <div class="spinner"></div>
+                <p>Conectando módulo <strong>${code}</strong>...</p>
+                <p class="auto-pair-hint">Tentativa ${autoPairRetries}/${AUTO_PAIR_MAX_RETRIES} — aguardando módulo</p>
+            </div>`;
+            setTimeout(() => doAutoPair(code), 3000);
+        } else {
+            autoPairRetries = 0;
+            _lastModulesKey = "";
+            loadModules();  // Restaura lista mesmo apos falha
+        }
+    }
+}
+
+// =====================================================================
+// CAMERA MODULE (isolado — controlado por CAMERA_ENABLED da config)
+// =====================================================================
+
+let cam_expanded = false;
+let cam_pending = false;
+let cam_imageUrl = null;
+let cam_lastLoaded = false;
+let cam_liveOn = false;
+let cam_liveChipId = null;
+let cam_liveLastTs = 0;
+
+function cam_render(force) {
+    if (!CAMERA_ENABLED) return;
+    const section = document.getElementById("section-camera");
+    if (!section) return;
+
+    // Nao recria HTML durante live mode (polling externo recria o innerHTML)
+    if (cam_liveOn && !force) return;
+
+    const onlineModule = modules.find(m => m.online);
+    const camReady = onlineModule && onlineModule.ctrl_data && onlineModule.ctrl_data.camera_ready;
+    const camOnline = !!camReady;
+    const chipId = onlineModule ? onlineModule.chip_id : null;
+
+    if (!onlineModule) {
+        section.innerHTML = "";
+        return;
+    }
+
+    const statusText = camOnline ? "Pronta" : "Offline";
+    const btnDisabled = !camOnline || cam_pending;
+
+    section.innerHTML = `
+        <div class="cam-card">
+            <div class="cam-header" onclick="cam_toggle()">
+                <div class="module-compact-info">
+                    <span class="status-dot ${camOnline ? 'online' : 'offline'}"></span>
+                    <span class="module-compact-name">Camera</span>
+                    <span class="module-compact-meta" style="color:var(--text-dim)">${statusText}</span>
+                </div>
+                <svg class="module-chevron" id="cam-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="${cam_expanded ? 'transform:rotate(180deg)' : ''}"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="cam-body ${cam_expanded ? '' : 'hidden'}" id="cam-body">
+                <div class="cam-preview" id="cam-preview">
+                    ${cam_imageUrl
+                        ? `<img src="${cam_imageUrl}&token=${token}" alt="Captura" />`
+                        : `<div class="cam-placeholder">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                <circle cx="12" cy="13" r="4"/>
+                            </svg>
+                            <p>${camOnline ? 'Toque em Capturar' : 'Camera nao conectada'}</p>
+                        </div>`
+                    }
+                </div>
+                <div class="cam-actions">
+                    <button class="cam-btn ${cam_pending ? 'pending' : ''}" onclick="cam_capture('${chipId}')" ${btnDisabled || cam_liveOn ? 'disabled' : ''}>
+                        ${cam_pending
+                            ? '<span class="btn-spinner"></span> Capturando...'
+                            : '&#128247; Capturar'
+                        }
+                    </button>
+                    <button class="cam-btn ${cam_liveOn ? 'cam-btn-live-active' : ''}" onclick="cam_liveToggle('${chipId}')" ${!camOnline ? 'disabled' : ''}>
+                        ${cam_liveOn
+                            ? '&#9632; Parar'
+                            : '&#127909; Ao Vivo'
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>`;
+
+    if (cam_expanded && !cam_lastLoaded && chipId && camOnline) {
+        cam_lastLoaded = true;
+        cam_loadLast(chipId);
+    }
+}
+
+function cam_toggle() {
+    cam_expanded = !cam_expanded;
+    const body = document.getElementById("cam-body");
+    const chevron = document.getElementById("cam-chevron");
+    if (body) body.classList.toggle("hidden", !cam_expanded);
+    if (chevron) chevron.style.transform = cam_expanded ? "rotate(180deg)" : "";
+    if (cam_expanded && !cam_lastLoaded && activeCtrlChipId) {
+        cam_lastLoaded = true;
+        cam_loadLast(activeCtrlChipId);
+    }
+}
+
+async function cam_capture(chipId) {
+    if (!chipId || cam_pending) return;
+    cam_pending = true;
+
+    // Atualiza apenas o botao (sem recriar tudo)
+    const btn = document.querySelector(".cam-actions .cam-btn");
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span> Capturando...'; }
+
+    const prevBase = cam_imageUrl ? cam_imageUrl.split("?")[0] : "";
+
+    try {
+        await api(`${API_PREFIX}/${chipId}/capture`);
+
+        for (let i = 0; i < 12; i++) {
+            await new Promise(r => setTimeout(r, 1200));
+            try {
+                const data = await api(`${API_PREFIX}/${chipId}/last-capture`);
+                if (data.status === "ok" && data.url) {
+                    if (data.url !== prevBase) {
+                        cam_imageUrl = data.url + "?t=" + Date.now();
+                        // Atualiza so a imagem
+                        const preview = document.getElementById("cam-preview");
+                        if (preview) preview.innerHTML = `<img src="${cam_imageUrl}&token=${token}" alt="Captura" />`;
+                        break;
+                    }
+                }
+            } catch (e) { break; }
+        }
+    } catch (e) {
+        console.error("Erro captura:", e);
+    }
+
+    cam_pending = false;
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#128247; Capturar'; }
+}
+
+async function cam_liveToggle(chipId) {
+    if (cam_liveOn) {
+        cam_stopLive();
+    } else {
+        cam_startLive(chipId);
+    }
+}
+
+async function cam_startLive(chipId) {
+    if (!chipId || cam_liveOn) return;
+    cam_liveOn = true;
+    cam_liveChipId = chipId;
+    cam_liveLastTs = 0;
+    cam_render(true);
+
+    try {
+        await api(`${API_PREFIX}/${chipId}/start-live`);
+    } catch (e) {
+        console.error("Erro ao iniciar live:", e);
+    }
+
+    // Inicia loop continuo de long-poll (sem intervalo fixo)
+    cam_pollLoop(chipId);
+}
+
+async function cam_stopLive() {
+    cam_liveOn = false;
+
+    if (cam_liveChipId) {
+        try {
+            await api(`${API_PREFIX}/${cam_liveChipId}/stop-live`);
+        } catch (e) { /* ignora */ }
+    }
+    cam_liveChipId = null;
+    cam_liveLastTs = 0;
+    cam_render(true);
+}
+
+async function cam_pollLoop(chipId) {
+    while (cam_liveOn && cam_liveChipId === chipId) {
+        try {
+            const res = await fetch(`${API_PREFIX}/${chipId}/live-frame?token=${token}&after=${cam_liveLastTs}`);
+            if (!cam_liveOn) break;
+
+            if (res.ok && res.headers.get("content-type")?.includes("image/jpeg")) {
+                const ts = res.headers.get("x-frame-ts");
+                if (ts) cam_liveLastTs = parseFloat(ts);
+
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const preview = document.getElementById("cam-preview");
+                if (preview) {
+                    const oldImg = preview.querySelector("img");
+                    if (oldImg && oldImg.src.startsWith("blob:")) {
+                        URL.revokeObjectURL(oldImg.src);
+                    }
+                    preview.innerHTML = `<img src="${url}" alt="Live" />`;
+                }
+                // Frame novo recebido — poll proximo imediatamente
+                continue;
+            }
+            // 204 = sem frame novo — espera curto antes de tentar de novo
+            await new Promise(r => setTimeout(r, 400));
+        } catch (e) {
+            if (cam_liveOn) await new Promise(r => setTimeout(r, 1000));
+        }
+    }
+}
+
+async function cam_loadLast(chipId) {
+    try {
+        const data = await api(`${API_PREFIX}/${chipId}/last-capture`);
+        if (data.status === "ok" && data.url) {
+            cam_imageUrl = data.url + "?t=" + Date.now();
+            cam_render();
+        }
+    } catch (e) { /* sem imagem anterior */ }
 }
 
 // =====================================================================
 // Init
 // =====================================================================
 
-if (token && user) {
-    enterApp();
-    setTimeout(checkPendingCode, 500);
-} else {
-    document.getElementById("auth-screen").classList.remove("hidden");
-    // Salva code para usar apos login
+async function initApp() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (code) {
-        localStorage.setItem("cultivee_pending_code", code);
+        localStorage.setItem(`${STORAGE_PREFIX}_pending_code`, code);
+    }
+
+    const serverOnline = await checkServerConnection();
+
+    if (token && user && serverOnline) {
+        enterApp();
+        setTimeout(checkPendingCode, 500);
+    } else if (!serverOnline) {
+        showOfflineScreen();
+    } else {
+        document.getElementById("auth-screen").classList.remove("hidden");
     }
 }
 
+async function checkServerConnection() {
+    try {
+        const res = await fetch("/api/modules/register", {
+            method: "HEAD",
+            signal: AbortSignal.timeout(3000)
+        });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function showOfflineScreen() {
+    document.getElementById("offline-screen").classList.remove("hidden");
+    document.getElementById("auth-screen").classList.add("hidden");
+    document.getElementById("app-screen").classList.add("hidden");
+}
+
+window.addEventListener("online", () => {
+    if (!document.getElementById("offline-screen").classList.contains("hidden")) {
+        location.reload();
+    }
+});
+
+initApp();
+
+// Poll modules + status every 5s
 setInterval(() => {
-    if (token) { loadModules(); loadCarousel(); }
+    if (token) {
+        loadModules();
+    }
 }, 5000);
 
-// =====================================================================
-// Web Bluetooth - Configuracao WiFi via BLE
-// =====================================================================
-
-const BLE_SERVICE = "fb1e4001-54ae-4a28-9f74-dfccb248601d";
-const BLE_SSID    = "fb1e4002-54ae-4a28-9f74-dfccb248601d";
-const BLE_PASS    = "fb1e4003-54ae-4a28-9f74-dfccb248601d";
-const BLE_CMD     = "fb1e4004-54ae-4a28-9f74-dfccb248601d";
-const BLE_STATUS  = "fb1e4005-54ae-4a28-9f74-dfccb248601d";
-
-let bleDevice = null;
-let bleChars = {};
-
-function hasBluetooth() {
-    return navigator.bluetooth !== undefined;
-}
-
-async function bleConnect() {
-    const statusEl = document.getElementById("ble-status");
-    const networksList = document.getElementById("ble-networks");
-
-    if (!hasBluetooth()) {
-        statusEl.textContent = "Bluetooth nao suportado neste navegador. Use Chrome.";
-        statusEl.className = "ble-status error";
-        return;
+// Poll ctrl status every 3s (pula se houve toggle recente)
+setInterval(() => {
+    if (token && activeCtrlChipId) {
+        if (Date.now() - lastToggleTime < TOGGLE_COOLDOWN) return;
+        loadCtrlStatus(activeCtrlChipId);
     }
-
-    try {
-        statusEl.textContent = "Buscando dispositivos Cultivee...";
-        statusEl.className = "ble-status info";
-
-        bleDevice = await navigator.bluetooth.requestDevice({
-            filters: [{ namePrefix: "Cultivee-" }],
-            optionalServices: [BLE_SERVICE]
-        });
-
-        statusEl.textContent = "Conectando a " + bleDevice.name + "...";
-
-        const server = await bleDevice.gatt.connect();
-        const service = await server.getPrimaryService(BLE_SERVICE);
-
-        bleChars.ssid = await service.getCharacteristic(BLE_SSID);
-        bleChars.pass = await service.getCharacteristic(BLE_PASS);
-        bleChars.cmd = await service.getCharacteristic(BLE_CMD);
-        bleChars.status = await service.getCharacteristic(BLE_STATUS);
-
-        // Escuta notificacoes de status
-        await bleChars.status.startNotifications();
-        bleChars.status.addEventListener("characteristicvaluechanged", (e) => {
-            const val = new TextDecoder().decode(e.target.value);
-            handleBleStatus(val);
-        });
-
-        statusEl.textContent = "Conectado a " + bleDevice.name + "! Buscando redes WiFi...";
-        statusEl.className = "ble-status success";
-
-        // Mostra secao de WiFi
-        document.getElementById("ble-wifi-section").classList.remove("hidden");
-        document.getElementById("ble-connect-btn").classList.add("hidden");
-
-        // Solicita scan de redes
-        const encoder = new TextEncoder();
-        await bleChars.cmd.writeValue(encoder.encode("scan"));
-
-    } catch (e) {
-        console.error("BLE erro:", e);
-        if (e.name === "NotFoundError") {
-            statusEl.textContent = "Nenhum dispositivo selecionado.";
-        } else {
-            statusEl.textContent = "Erro: " + e.message;
-        }
-        statusEl.className = "ble-status error";
-    }
-}
-
-function handleBleStatus(val) {
-    const statusEl = document.getElementById("ble-status");
-    console.log("BLE status:", val);
-
-    if (val.startsWith("networks:")) {
-        // Recebeu lista de redes WiFi
-        const raw = val.substring(9);
-        const networks = raw.split("|").map(n => {
-            const [ssid, rssi] = n.split(",");
-            return { ssid, rssi: parseInt(rssi) };
-        }).filter(n => n.ssid);
-
-        const list = document.getElementById("ble-networks");
-        list.innerHTML = networks.map(n => {
-            const bars = n.rssi > -50 ? "████" : n.rssi > -65 ? "███░" : n.rssi > -75 ? "██░░" : "█░░░";
-            return `<div class="ble-network" onclick="bleSelectNetwork('${n.ssid.replace(/'/g, "\\'")}')">
-                <span class="ble-network-name">${n.ssid}</span>
-                <span class="ble-network-signal">${bars}</span>
-            </div>`;
-        }).join("");
-
-        statusEl.textContent = `${networks.length} redes encontradas. Selecione uma:`;
-        statusEl.className = "ble-status success";
-
-    } else if (val === "ssid_ok") {
-        statusEl.textContent = "SSID recebido pelo modulo.";
-    } else if (val === "pass_ok") {
-        statusEl.textContent = "Senha recebida pelo modulo.";
-    } else if (val === "connecting") {
-        statusEl.textContent = "Modulo conectando ao WiFi... Aguarde o reinicio.";
-        statusEl.className = "ble-status info";
-        // Fecha modal apos 3s
-        setTimeout(() => {
-            closeBleModal();
-            // Recarrega modulos apos 10s para ver se conectou
-            setTimeout(loadModules, 10000);
-        }, 3000);
-    } else if (val.startsWith("error:")) {
-        statusEl.textContent = "Erro: " + val.substring(6);
-        statusEl.className = "ble-status error";
-    }
-}
-
-function bleSelectNetwork(ssid) {
-    document.getElementById("ble-ssid").value = ssid;
-    document.getElementById("ble-pass-section").classList.remove("hidden");
-    document.getElementById("ble-pass").focus();
-    document.getElementById("ble-status").textContent = `Rede selecionada: ${ssid}`;
-}
-
-async function bleSendCredentials() {
-    const ssid = document.getElementById("ble-ssid").value;
-    const pass = document.getElementById("ble-pass").value;
-    const statusEl = document.getElementById("ble-status");
-
-    if (!ssid) {
-        statusEl.textContent = "Selecione uma rede WiFi.";
-        statusEl.className = "ble-status error";
-        return;
-    }
-
-    try {
-        const encoder = new TextEncoder();
-        statusEl.textContent = "Enviando credenciais...";
-        statusEl.className = "ble-status info";
-
-        await bleChars.ssid.writeValue(encoder.encode(ssid));
-        await new Promise(r => setTimeout(r, 300));
-        await bleChars.pass.writeValue(encoder.encode(pass));
-        await new Promise(r => setTimeout(r, 300));
-        await bleChars.cmd.writeValue(encoder.encode("connect"));
-
-        statusEl.textContent = "Credenciais enviadas! O modulo vai reiniciar...";
-        statusEl.className = "ble-status success";
-    } catch (e) {
-        statusEl.textContent = "Erro ao enviar: " + e.message;
-        statusEl.className = "ble-status error";
-    }
-}
-
-function showBleModal() {
-    document.getElementById("ble-modal").classList.remove("hidden");
-    document.getElementById("ble-status").textContent = "Clique em 'Buscar Modulo' para iniciar.";
-    document.getElementById("ble-status").className = "ble-status info";
-    document.getElementById("ble-connect-btn").classList.remove("hidden");
-    document.getElementById("ble-wifi-section").classList.add("hidden");
-    document.getElementById("ble-pass-section").classList.add("hidden");
-    document.getElementById("ble-networks").innerHTML = "";
-}
-
-function closeBleModal(event) {
-    if (event && event.target !== event.currentTarget) return;
-    document.getElementById("ble-modal").classList.add("hidden");
-    if (bleDevice && bleDevice.gatt.connected) {
-        bleDevice.gatt.disconnect();
-    }
-    bleDevice = null;
-    bleChars = {};
-}
+}, 3000);
 
 // =====================================================================
 // PWA Install
 // =====================================================================
 
-const APP_VERSION = '1.8.0';
 let deferredPrompt = null;
 
-// Registrar Service Worker + verificar atualizacoes
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
         .then(reg => {
             console.log('SW registrado:', reg.scope);
-
-            // Verificar atualizacoes a cada 30 minutos
             setInterval(() => reg.update(), 30 * 60 * 1000);
 
-            // Detectar novo SW instalado (atualizacao disponivel)
             reg.addEventListener('updatefound', () => {
                 const newWorker = reg.installing;
                 newWorker.addEventListener('statechange', () => {
                     if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        // Novo SW pronto, mostrar banner de atualizacao
                         showUpdateBanner();
                     }
                 });
@@ -805,42 +1134,32 @@ if ('serviceWorker' in navigator) {
         })
         .catch(err => console.log('SW erro:', err));
 
-    // Escutar mensagens do SW
     navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data.type === 'APP_UPDATED') {
             showUpdateBanner(event.data.version);
         }
-        if (event.data.type === 'VERSION') {
-            console.log('SW version:', event.data.version);
-        }
     });
 }
 
-// Mostrar versao no footer
 document.addEventListener('DOMContentLoaded', () => {
-    const footer = document.querySelector('.footer');
+    const footer = document.getElementById('app-footer');
     if (footer) {
-        footer.textContent = `Cultivee v${APP_VERSION} · Monitoramento inteligente`;
+        footer.textContent = `${PRODUCT_NAME} v${APP_VERSION}`;
     }
 });
 
-// Capturar evento de instalacao
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    // Verificar se ja foi dispensado recentemente
-    const dismissed = localStorage.getItem('pwa_dismissed');
+    const dismissed = localStorage.getItem('pwa_ctrl_dismissed');
     if (dismissed) {
         const dismissedTime = parseInt(dismissed);
-        // Mostra novamente apos 7 dias
         if (Date.now() - dismissedTime < 7 * 24 * 60 * 60 * 1000) return;
     }
     showPwaBanner();
 });
 
-// Verificar se ja esta instalado
 window.addEventListener('appinstalled', () => {
-    console.log('Cultivee instalado!');
     hidePwaBanner();
     deferredPrompt = null;
 });
@@ -857,20 +1176,16 @@ function hidePwaBanner() {
 
 function pwaInstall() {
     if (!deferredPrompt) {
-        // Fallback: mostrar instrucoes manuais
         const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
         if (isIOS) {
-            alert('Para instalar:\n1. Toque no botao de compartilhar (quadrado com seta)\n2. Selecione "Adicionar a Tela de Inicio"');
+            alert('Para instalar:\n1. Toque no botao de compartilhar\n2. Selecione "Adicionar a Tela de Início"');
         } else {
-            alert('Para instalar:\n1. Abra o menu do navegador (3 pontos)\n2. Selecione "Instalar aplicativo" ou "Adicionar a tela inicial"');
+            alert('Para instalar:\n1. Abra o menu do navegador (3 pontos)\n2. Selecione "Instalar aplicativo"');
         }
         return;
     }
     deferredPrompt.prompt();
     deferredPrompt.userChoice.then((result) => {
-        if (result.outcome === 'accepted') {
-            console.log('PWA instalada!');
-        }
         deferredPrompt = null;
         hidePwaBanner();
     });
@@ -878,7 +1193,7 @@ function pwaInstall() {
 
 function pwaDismiss() {
     hidePwaBanner();
-    localStorage.setItem('pwa_dismissed', Date.now().toString());
+    localStorage.setItem('pwa_ctrl_dismissed', Date.now().toString());
 }
 
 // =====================================================================
@@ -886,7 +1201,6 @@ function pwaDismiss() {
 // =====================================================================
 
 function showUpdateBanner(newVersion) {
-    // Remover banner existente se houver
     let banner = document.getElementById('update-banner');
     if (banner) banner.remove();
 
@@ -922,17 +1236,14 @@ function doAppUpdate() {
         banner.querySelector('.pwa-btn-install').disabled = true;
     }
 
-    // Escutar quando o novo SW assumir o controle
     navigator.serviceWorker.addEventListener('controllerchange', () => {
         window.location.reload();
     });
 
-    // Forcar o novo SW a ativar
     navigator.serviceWorker.ready.then((reg) => {
         if (reg.waiting) {
             reg.waiting.postMessage('SKIP_WAITING');
         } else {
-            // Se nao tem waiting, limpar caches e recarregar
             caches.keys().then(keys => {
                 Promise.all(keys.map(k => caches.delete(k))).then(() => {
                     window.location.reload();
@@ -941,7 +1252,6 @@ function doAppUpdate() {
         }
     });
 
-    // Fallback: se nada acontecer em 3s, forcar reload
     setTimeout(() => {
         caches.keys().then(keys => {
             Promise.all(keys.map(k => caches.delete(k))).then(() => {
@@ -955,3 +1265,5 @@ function dismissUpdate() {
     const banner = document.getElementById('update-banner');
     if (banner) banner.remove();
 }
+
+document.addEventListener("keydown", e => { if (e.key === "Escape") closePairModal(); });

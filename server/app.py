@@ -173,8 +173,33 @@ def register_module():
 
     poll_interval = models.get_poll_interval(chip_id)
 
+    # Captura agendada: se recording ativo e intervalo passou, enfileira captura
+    capture_cfg = models.get_capture_config(chip_id)
+    if capture_cfg["recording"]:
+        interval = capture_cfg["capture_interval"]
+        last = capture_cfg["last_capture_at"]
+        should_capture = False
+        if not last:
+            should_capture = True
+        else:
+            try:
+                elapsed = (datetime.now() - datetime.fromisoformat(last)).total_seconds()
+                should_capture = elapsed >= interval
+            except (ValueError, TypeError):
+                should_capture = True
+        if should_capture:
+            simple_cmds.append({"cmd": "capture"})
+            models.mark_capture(chip_id)
+            log.info(f"Captura agendada: {chip_id} (intervalo={interval}s)")
+
     log.info(f"Modulo registrado: {module_type} {chip_id} ({short_id}) IP={ip} poll={poll_interval}ms")
-    return jsonify({"status": "ok", "commands": simple_cmds, "poll_interval": poll_interval})
+    return jsonify({
+        "status": "ok",
+        "commands": simple_cmds,
+        "poll_interval": poll_interval,
+        "capture_interval": capture_cfg["capture_interval"],
+        "recording": capture_cfg["recording"],
+    })
 
 
 @app.route("/api/modules/poll")

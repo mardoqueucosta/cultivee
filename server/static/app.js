@@ -308,6 +308,13 @@ async function loadModules() {
         prefs._seen = modules.map(m => m.chip_id);
         saveModulePrefs(prefs);
 
+        // Sync capture state from cam module
+        const camMod = modules.find(m => hasCap(m, 'cam'));
+        if (camMod) {
+            cam_recording = !!camMod.recording;
+            cam_captureInterval = camMod.capture_interval || 600;
+        }
+
         renderModuleList();
         renderSelectedContent();
     } catch (e) {
@@ -702,6 +709,13 @@ let cam_liveChipId = null;
 let cam_liveType = null;
 let cam_liveLastTs = 0;
 let cam_expanded = false;
+let cam_recording = false;
+let cam_captureInterval = 600;
+let cam_galleryImages = [];
+let cam_galleryPage = 1;
+let cam_countdownTimer = null;
+let cam_countdownRemaining = 0;
+const CAM_GALLERY_PER_PAGE = 4;
 
 function renderModule_cam(container, mod) {
     const chipId = mod.chip_id;
@@ -737,10 +751,53 @@ function renderModule_cam(container, mod) {
                         ${liveActive ? '&#9632; Parar' : '&#127909; Ao Vivo'}
                     </button>
                 </div>
+
+                <!-- Captura Agendada -->
+                <div class="scheduled-section" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                        <b style="font-size:0.85rem;color:var(--text)">Captura Agendada</b>
+                        ${cam_recording ? '<span class="scheduled-badge"><span class="rec-dot-green"></span> Gravando</span>' : ''}
+                    </div>
+                    <div style="margin-bottom:8px">
+                        <label style="font-size:0.75rem;color:var(--text-dim)">Intervalo</label>
+                        <select id="cam-interval" class="config-select" onchange="cam_setInterval('${chipId}','${moduleType}',this.value)" ${cam_recording ? 'disabled' : ''}>
+                            <option value="10" ${cam_captureInterval==10?'selected':''}>10 segundos</option>
+                            <option value="30" ${cam_captureInterval==30?'selected':''}>30 segundos</option>
+                            <option value="60" ${cam_captureInterval==60?'selected':''}>1 minuto</option>
+                            <option value="300" ${cam_captureInterval==300?'selected':''}>5 minutos</option>
+                            <option value="600" ${cam_captureInterval==600?'selected':''}>10 minutos</option>
+                            <option value="1800" ${cam_captureInterval==1800?'selected':''}>30 minutos</option>
+                            <option value="3600" ${cam_captureInterval==3600?'selected':''}>1 hora</option>
+                        </select>
+                    </div>
+                    ${cam_recording ? `<div id="cam-countdown" style="margin-bottom:8px">
+                        <span style="font-size:0.75rem;color:var(--text-dim)" id="cam-countdown-label">Proxima captura em --:--</span>
+                        <div class="progress-scheduled"><div class="progress-fill-scheduled" id="cam-countdown-bar"></div></div>
+                    </div>` : ''}
+                    <button class="btn-scheduled ${cam_recording ? 'recording' : ''}" onclick="cam_toggleRecording('${chipId}','${moduleType}')" ${!camReady ? 'disabled' : ''}>
+                        <span>${cam_recording ? '&#9632;' : '&#9654;'}</span>
+                        <span>${cam_recording ? 'Parar Gravacao' : 'Iniciar Gravacao'}</span>
+                    </button>
+                </div>
+
+                <!-- Galeria -->
+                <div class="gallery-section" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                        <b style="font-size:0.85rem;color:var(--text)">Galeria</b>
+                        <div class="gallery-nav" id="cam-gallery-nav"></div>
+                    </div>
+                    <div id="cam-gallery-grid" class="gallery-grid">
+                        <span style="color:var(--text-dim);font-size:0.8rem;grid-column:1/-1;text-align:center;padding:1rem">Carregando...</span>
+                    </div>
+                </div>
             </div>
         </div>`;
 
     if (cam_expanded && !cam_imageUrl && camReady) cam_loadLast(chipId, moduleType);
+    if (cam_expanded) {
+        cam_loadGallery(chipId, moduleType);
+        if (cam_recording) cam_startCountdown(cam_captureInterval);
+    }
 }
 
 function cam_toggle() {
@@ -841,6 +898,123 @@ async function cam_loadLast(chipId, moduleType) {
             if (img) img.innerHTML = `<img src="${cam_imageUrl}&token=${token}" style="width:100%;border-radius:8px" alt="Captura" />`;
         }
     } catch (e) {}
+}
+
+// --- Captura Agendada ---
+
+async function cam_toggleRecording(chipId, moduleType) {
+    const newState = !cam_recording;
+    try {
+        await api(`${apiFor(moduleType)}/${chipId}/config`, {
+            method: 'POST', body: { recording: newState }
+        });
+        cam_recording = newState;
+        if (!newState) cam_stopCountdown();
+        forceFullRefresh();
+    } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function cam_setInterval(chipId, moduleType, value) {
+    const interval = parseInt(value);
+    try {
+        await api(`${apiFor(moduleType)}/${chipId}/config`, {
+            method: 'POST', body: { capture_interval: interval }
+        });
+        cam_captureInterval = interval;
+    } catch (e) { alert('Erro: ' + e.message); }
+}
+
+function cam_startCountdown(intervalSeconds) {
+    cam_stopCountdown();
+    cam_countdownRemaining = intervalSeconds;
+    cam_countdownTimer = setInterval(() => {
+        cam_countdownRemaining--;
+        if (cam_countdownRemaining <= 0) cam_countdownRemaining = intervalSeconds;
+        const bar = document.getElementById('cam-countdown-bar');
+        const label = document.getElementById('cam-countdown-label');
+        if (bar) bar.style.width = ((intervalSeconds - cam_countdownRemaining) / intervalSeconds * 100) + '%';
+        if (label) {
+            const m = Math.floor(cam_countdownRemaining / 60);
+            const s = String(cam_countdownRemaining % 60).padStart(2, '0');
+            label.textContent = `Proxima captura em ${m}:${s}`;
+        }
+    }, 1000);
+}
+
+function cam_stopCountdown() {
+    if (cam_countdownTimer) { clearInterval(cam_countdownTimer); cam_countdownTimer = null; }
+}
+
+// --- Galeria ---
+
+async function cam_loadGallery(chipId, moduleType) {
+    try {
+        const data = await api(`${apiFor(moduleType)}/${chipId}/images?page=${cam_galleryPage}&per_page=${CAM_GALLERY_PER_PAGE}`);
+        cam_galleryImages = data.images || [];
+        cam_renderGallery(data);
+    } catch (e) {
+        const grid = document.getElementById('cam-gallery-grid');
+        if (grid) grid.innerHTML = '<span style="color:var(--text-dim);font-size:0.8rem;grid-column:1/-1;text-align:center;padding:1rem">Erro ao carregar</span>';
+    }
+}
+
+function cam_renderGallery(data) {
+    const grid = document.getElementById('cam-gallery-grid');
+    const nav = document.getElementById('cam-gallery-nav');
+    if (!grid) return;
+
+    if (!data.images || data.images.length === 0) {
+        grid.innerHTML = '<span style="color:var(--text-dim);font-size:0.8rem;grid-column:1/-1;text-align:center;padding:1rem">Nenhuma captura salva</span>';
+        if (nav) nav.innerHTML = '';
+        return;
+    }
+
+    if (nav) {
+        nav.innerHTML = `
+            <button class="gallery-nav-btn" onclick="cam_galleryPrev()" ${data.page <= 1 ? 'disabled' : ''}>&lt;</button>
+            <span style="font-size:0.7rem;color:var(--text-dim)">${data.page}/${data.pages}</span>
+            <button class="gallery-nav-btn" onclick="cam_galleryNext()" ${data.page >= data.pages ? 'disabled' : ''}>&gt;</button>
+        `;
+    }
+
+    grid.innerHTML = data.images.map(img => {
+        const sizeStr = img.size_kb >= 1024 ? (img.size_kb/1024).toFixed(1)+' MB' : Math.round(img.size_kb)+' KB';
+        let dateStr = '';
+        let ago = '';
+        if (img.created_at) {
+            try {
+                const d = new Date(img.created_at);
+                dateStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+                if (diff < 60) ago = `${diff}s`;
+                else if (diff < 3600) ago = `${Math.floor(diff/60)}min`;
+                else if (diff < 86400) ago = `${Math.floor(diff/3600)}h`;
+                else ago = `${Math.floor(diff/86400)}d`;
+            } catch(e) {}
+        }
+        return `<div class="gallery-item">
+            <img src="${img.url}?token=${token}" alt="Captura" loading="lazy" />
+            ${ago ? `<span class="gallery-ago">${ago}</span>` : ''}
+            <div class="gallery-info">${dateStr} · <span class="gallery-size">${sizeStr}</span></div>
+        </div>`;
+    }).join('');
+}
+
+function cam_galleryPrev() {
+    if (cam_galleryPage > 1) { cam_galleryPage--; forceFullRefresh(); }
+}
+
+function cam_galleryNext() {
+    cam_galleryPage++;
+    forceFullRefresh();
+}
+
+// Sync recording state from modules data
+function cam_syncState(mod) {
+    if (!mod || !mod.ctrl_data) return;
+    const cfg = mod.ctrl_data;
+    if (cfg.capture_interval) cam_captureInterval = cfg.capture_interval;
+    // recording state comes from module-level field, not ctrl_data
 }
 
 // =====================================================================

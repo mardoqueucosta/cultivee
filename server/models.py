@@ -86,6 +86,20 @@ def init_db():
     except Exception:
         conn.execute("ALTER TABLE modules ADD COLUMN group_id INTEGER REFERENCES groups(id)")
 
+    # Migracao: colunas de captura agendada
+    try:
+        conn.execute("SELECT capture_interval FROM modules LIMIT 0")
+    except Exception:
+        conn.execute("ALTER TABLE modules ADD COLUMN capture_interval INTEGER DEFAULT 600")
+    try:
+        conn.execute("SELECT recording FROM modules LIMIT 0")
+    except Exception:
+        conn.execute("ALTER TABLE modules ADD COLUMN recording INTEGER DEFAULT 0")
+    try:
+        conn.execute("SELECT last_capture_at FROM modules LIMIT 0")
+    except Exception:
+        conn.execute("ALTER TABLE modules ADD COLUMN last_capture_at TEXT")
+
     conn.commit()
     conn.close()
 
@@ -447,6 +461,53 @@ def remove_module_from_group(chip_id, user_id):
     conn.execute(
         "UPDATE modules SET group_id = NULL WHERE chip_id = ? AND user_id = ?",
         (chip_id, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+# --- Captura agendada ---
+
+def set_capture_config(chip_id, capture_interval=None, recording=None):
+    conn = get_db()
+    updates = []
+    params = []
+    if capture_interval is not None:
+        updates.append("capture_interval = ?")
+        params.append(int(capture_interval))
+    if recording is not None:
+        updates.append("recording = ?")
+        params.append(1 if recording else 0)
+    if not updates:
+        conn.close()
+        return
+    params.append(chip_id)
+    conn.execute(f"UPDATE modules SET {', '.join(updates)} WHERE chip_id = ?", params)
+    conn.commit()
+    conn.close()
+
+
+def get_capture_config(chip_id):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT capture_interval, recording, last_capture_at FROM modules WHERE chip_id = ?",
+        (chip_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return {"capture_interval": 600, "recording": False, "last_capture_at": None}
+    return {
+        "capture_interval": row["capture_interval"] or 600,
+        "recording": bool(row["recording"]),
+        "last_capture_at": row["last_capture_at"],
+    }
+
+
+def mark_capture(chip_id):
+    conn = get_db()
+    conn.execute(
+        "UPDATE modules SET last_capture_at = ? WHERE chip_id = ?",
+        (datetime.now().isoformat(), chip_id)
     )
     conn.commit()
     conn.close()

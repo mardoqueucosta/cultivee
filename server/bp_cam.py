@@ -87,6 +87,7 @@ def upload_capture(chip_id):
     filename = f"{timestamp}.jpg"
     (save_dir / filename).write_bytes(img_data)
 
+    models.mark_capture(chip_id)
     log.info(f"Capture push [{chip_id[:4]}]: {filename} ({len(img_data)/1024:.1f} KB)")
     return jsonify({"status": "ok"})
 
@@ -239,3 +240,82 @@ def last_capture(chip_id):
         "url": f"/api/{mod_type}/{chip_id}/image/{filename}",
         "size_kb": round(files[0].stat().st_size / 1024, 1)
     })
+
+
+# =====================================================================
+# Captura agendada — config + galeria
+# =====================================================================
+
+@cam_bp.route("/<chip_id>/config", methods=["POST"])
+def set_config(chip_id):
+    """Configurar captura agendada: intervalo e recording on/off."""
+    from app import require_auth_func
+    user = require_auth_func()
+    if not user:
+        return jsonify({"error": "Nao autenticado"}), 401
+    request.user = user
+
+    module = _get_cam_module_or_404(chip_id)
+    if not module:
+        return jsonify({"error": "Modulo nao encontrado"}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON invalido"}), 400
+
+    interval = data.get("capture_interval")
+    recording = data.get("recording")
+
+    if interval is not None:
+        interval = int(interval)
+        if interval < 10 or interval > 86400:
+            return jsonify({"error": "Intervalo deve ser entre 10s e 24h"}), 400
+
+    models.set_capture_config(chip_id, capture_interval=interval, recording=recording)
+    cfg = models.get_capture_config(chip_id)
+    return jsonify({"status": "ok", **cfg})
+
+
+@cam_bp.route("/<chip_id>/images")
+def list_images(chip_id):
+    """Lista capturas com paginacao."""
+    from app import require_auth_func
+    user = require_auth_func()
+    if not user:
+        return jsonify({"error": "Nao autenticado"}), 401
+    request.user = user
+
+    module = _get_cam_module_or_404(chip_id)
+    if not module:
+        return jsonify({"error": "Modulo nao encontrado"}), 404
+
+    cap_dir = CAPTURE_DIR / chip_id
+    if not cap_dir.exists():
+        return jsonify({"images": [], "total": 0, "page": 1, "pages": 0})
+
+    all_files = sorted(cap_dir.glob("*.jpg"), reverse=True)
+    total = len(all_files)
+
+    page = max(1, int(request.args.get("page", 1)))
+    per_page = min(50, max(1, int(request.args.get("per_page", 20))))
+    pages = max(1, (total + per_page - 1) // per_page)
+    start = (page - 1) * per_page
+    files = all_files[start:start + per_page]
+
+    mod_type = module.get("type", "cam")
+    images = []
+    for f in files:
+        # Parse timestamp do nome: YYYYMMDD_HHMMSS.jpg
+        name = f.stem
+        try:
+            created = datetime.strptime(name, "%Y%m%d_%H%M%S").isoformat()
+        except ValueError:
+            created = ""
+        images.append({
+            "filename": f.name,
+            "url": f"/api/{mod_type}/{chip_id}/image/{f.name}",
+            "size_kb": round(f.stat().st_size / 1024, 1),
+            "created_at": created,
+        })
+
+    return jsonify({"images": images, "total": total, "page": page, "pages": pages})

@@ -180,7 +180,25 @@ String cam_dashboard_html() {
   html += "<div style='display:flex;gap:8px;margin-top:8px'>";
   html += "<button id='cam-btn' onclick='cap()' style='flex:1;padding:10px;border-radius:10px;border:1px solid #3a3d45;background:#2a2d35;color:#aaa;font-weight:600;font-size:0.85rem;cursor:pointer' " + String(cameraReady ? "" : "disabled") + ">&#128247; Capturar</button>";
   html += "<button id='live-btn' onclick='live()' style='flex:1;padding:10px;border-radius:10px;border:1px solid #3a3d45;background:#2a2d35;color:#aaa;font-weight:600;font-size:0.85rem;cursor:pointer' " + String(cameraReady ? "" : "disabled") + ">&#127909; Ao Vivo</button>";
-  html += "</div></div></div>";
+  html += "</div>";
+  // Captura Agendada (offline — timer local no JS)
+  html += "<div style='margin-top:12px;padding-top:12px;border-top:1px solid #2a2d35'>";
+  html += "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>";
+  html += "<b style='font-size:0.85rem;color:#e0e0e0'>Captura Agendada</b>";
+  html += "<span id='sched-badge' style='display:none;font-size:0.65rem;font-weight:700;color:#27ae60;padding:2px 8px;border-radius:99px;background:rgba(39,174,96,0.15);border:1px solid rgba(39,174,96,0.3)'>&#9679; Gravando</span>";
+  html += "</div>";
+  html += "<div style='margin-bottom:8px'>";
+  html += "<label style='font-size:0.75rem;color:#888'>Intervalo</label>";
+  html += "<select id='sched-interval' style='width:100%;padding:8px;border:1px solid #3a3d45;border-radius:8px;font-size:0.85rem;background:#2a2d35;color:#aaa'>";
+  html += "<option value='10'>10 segundos</option><option value='30'>30 segundos</option><option value='60'>1 minuto</option>";
+  html += "<option value='300'>5 minutos</option><option value='600' selected>10 minutos</option>";
+  html += "<option value='1800'>30 minutos</option><option value='3600'>1 hora</option></select></div>";
+  html += "<div id='sched-progress' style='display:none;margin-bottom:8px'>";
+  html += "<span id='sched-label' style='font-size:0.75rem;color:#888'>Proxima captura em --:--</span>";
+  html += "<div style='height:4px;background:#2a2d35;border-radius:2px;overflow:hidden;margin-top:4px'><div id='sched-bar' style='height:100%;background:#27ae60;border-radius:2px;width:0%;transition:width 1s linear'></div></div></div>";
+  html += "<button id='sched-btn' onclick='schedToggle()' style='width:100%;padding:10px;border-radius:10px;border:1px solid #27ae60;background:transparent;color:#27ae60;font-weight:600;font-size:0.85rem;cursor:pointer' " + String(cameraReady ? "" : "disabled") + ">&#9654; Iniciar Gravacao</button>";
+  html += "</div>";
+  html += "</div></div>";
   return html;
 }
 
@@ -224,6 +242,28 @@ b.disabled=false;b.innerHTML='&#128247; Capturar';
 im.innerHTML='<span style="color:#e74c3c;font-size:0.85rem">Erro ao capturar</span>';
 b.disabled=false;b.innerHTML='&#128247; Capturar';
 })
+}
+var schedOn=false,schedTimer=null,schedRemaining=0;
+function schedToggle(){
+var btn=document.getElementById('sched-btn'),badge=document.getElementById('sched-badge'),prog=document.getElementById('sched-progress'),sel=document.getElementById('sched-interval');
+if(schedOn){
+schedOn=false;clearInterval(schedTimer);schedTimer=null;
+btn.innerHTML='&#9654; Iniciar Gravacao';btn.style.borderColor='#27ae60';btn.style.color='#27ae60';
+badge.style.display='none';prog.style.display='none';sel.disabled=false;
+}else{
+schedOn=true;var interval=parseInt(sel.value);schedRemaining=interval;
+btn.innerHTML='&#9632; Parar Gravacao';btn.style.borderColor='#e74c3c';btn.style.color='#e74c3c';
+badge.style.display='inline-flex';prog.style.display='block';sel.disabled=true;
+cap();
+schedTimer=setInterval(function(){
+schedRemaining--;
+if(schedRemaining<=0){schedRemaining=interval;cap()}
+var pct=((interval-schedRemaining)/interval)*100;
+document.getElementById('sched-bar').style.width=pct+'%';
+var m=Math.floor(schedRemaining/60),s=String(schedRemaining%60).padStart(2,'0');
+document.getElementById('sched-label').textContent='Proxima captura em '+m+':'+s;
+},1000);
+}
 }
 )rawliteral";
 }

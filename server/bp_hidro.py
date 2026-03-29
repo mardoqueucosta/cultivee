@@ -14,9 +14,15 @@ hidro_bp = Blueprint("hidro", __name__)
 
 
 def _get_module_or_404(chip_id):
-    """Helper: retorna modulo se pertence ao usuario autenticado."""
+    """Helper: retorna modulo se pertence ao usuario autenticado e tem capability hidro."""
     module = models.get_module_by_chip_id(chip_id)
     if not module or module.get("user_id") != request.user["id"]:
+        return None
+    try:
+        caps = json.loads(module.get("capabilities", "[]"))
+    except (json.JSONDecodeError, TypeError):
+        caps = []
+    if "hidro" not in caps:
         return None
     return module
 

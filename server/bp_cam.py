@@ -5,6 +5,7 @@ Registrado com url_prefix dinamico (ex: /api/hidro-cam).
 """
 
 import os
+import json
 import pathlib
 import logging
 import threading
@@ -14,7 +15,6 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, Response
 
 import models
-from config import API_PREFIX
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +26,20 @@ LIVE_DIR = pathlib.Path(os.environ.get("DATA_DIR", "data")) / "live"
 # In-memory live frame buffer (thread-safe)
 _live_frames = {}  # chip_id -> {"data": bytes, "ts": float}
 _live_lock = threading.Lock()
+
+
+def _get_cam_module_or_404(chip_id):
+    """Helper: retorna modulo se pertence ao usuario autenticado e tem capability cam."""
+    module = models.get_module_by_chip_id(chip_id)
+    if not module or module.get("user_id") != request.user["id"]:
+        return None
+    try:
+        caps = json.loads(module.get("capabilities", "[]"))
+    except (json.JSONDecodeError, TypeError):
+        caps = []
+    if "cam" not in caps:
+        return None
+    return module
 
 
 # =====================================================================
@@ -41,8 +55,8 @@ def capture(chip_id):
         return jsonify({"error": "Nao autenticado"}), 401
     request.user = user
 
-    module = models.get_module_by_chip_id(chip_id)
-    if not module or module.get("user_id") != request.user["id"]:
+    module = _get_cam_module_or_404(chip_id)
+    if not module:
         return jsonify({"error": "Modulo nao encontrado"}), 404
 
     models.add_pending_command(chip_id, "capture")
@@ -52,7 +66,17 @@ def capture(chip_id):
 
 @cam_bp.route("/<chip_id>/upload-capture", methods=["POST"])
 def upload_capture(chip_id):
-    """ESP32 envia foto capturada (push)."""
+    """ESP32 envia foto capturada (push). Sem auth mas valida chip_id + capability."""
+    module = models.get_module_by_chip_id(chip_id)
+    if not module:
+        return jsonify({"error": "Modulo nao encontrado"}), 404
+    try:
+        caps = json.loads(module.get("capabilities", "[]"))
+    except (json.JSONDecodeError, TypeError):
+        caps = []
+    if "cam" not in caps:
+        return jsonify({"error": "Modulo sem capability cam"}), 403
+
     img_data = request.get_data()
     if not img_data or len(img_data) < 100:
         return jsonify({"error": "Imagem vazia"}), 400
@@ -76,8 +100,8 @@ def image(chip_id, filename):
         return jsonify({"error": "Nao autenticado"}), 401
     request.user = user
 
-    module = models.get_module_by_chip_id(chip_id)
-    if not module or module.get("user_id") != request.user["id"]:
+    module = _get_cam_module_or_404(chip_id)
+    if not module:
         return jsonify({"error": "Nao autorizado"}), 403
 
     filepath = CAPTURE_DIR / chip_id / filename
@@ -100,8 +124,8 @@ def start_live(chip_id):
         return jsonify({"error": "Nao autenticado"}), 401
     request.user = user
 
-    module = models.get_module_by_chip_id(chip_id)
-    if not module or module.get("user_id") != request.user["id"]:
+    module = _get_cam_module_or_404(chip_id)
+    if not module:
         return jsonify({"error": "Modulo nao encontrado"}), 404
 
     models.add_pending_command(chip_id, "start-live")
@@ -118,8 +142,8 @@ def stop_live(chip_id):
         return jsonify({"error": "Nao autenticado"}), 401
     request.user = user
 
-    module = models.get_module_by_chip_id(chip_id)
-    if not module or module.get("user_id") != request.user["id"]:
+    module = _get_cam_module_or_404(chip_id)
+    if not module:
         return jsonify({"error": "Modulo nao encontrado"}), 404
 
     models.add_pending_command(chip_id, "stop-live")
@@ -136,7 +160,17 @@ def stop_live(chip_id):
 def live_frame(chip_id):
     """POST: ESP32 envia frame live. GET: PWA busca ultimo frame (long-poll)."""
     if request.method == "POST":
-        # ESP32 push — sem auth (ESP32 nao tem token)
+        # ESP32 push — sem auth, mas valida chip_id + capability
+        module = models.get_module_by_chip_id(chip_id)
+        if not module:
+            return jsonify({"error": "Modulo nao encontrado"}), 404
+        try:
+            caps = json.loads(module.get("capabilities", "[]"))
+        except (json.JSONDecodeError, TypeError):
+            caps = []
+        if "cam" not in caps:
+            return jsonify({"error": "Modulo sem capability cam"}), 403
+
         img_data = request.get_data()
         if not img_data or len(img_data) < 100:
             return jsonify({"error": "Frame vazio"}), 400
@@ -153,8 +187,8 @@ def live_frame(chip_id):
         return jsonify({"error": "Nao autenticado"}), 401
     request.user = user
 
-    module = models.get_module_by_chip_id(chip_id)
-    if not module or module.get("user_id") != request.user["id"]:
+    module = _get_cam_module_or_404(chip_id)
+    if not module:
         return jsonify({"error": "Nao autorizado"}), 403
 
     last_ts = float(request.args.get("after", 0))
@@ -185,8 +219,8 @@ def last_capture(chip_id):
         return jsonify({"error": "Nao autenticado"}), 401
     request.user = user
 
-    module = models.get_module_by_chip_id(chip_id)
-    if not module or module.get("user_id") != request.user["id"]:
+    module = _get_cam_module_or_404(chip_id)
+    if not module:
         return jsonify({"error": "Modulo nao encontrado"}), 404
 
     cap_dir = CAPTURE_DIR / chip_id
@@ -197,10 +231,11 @@ def last_capture(chip_id):
     if not files:
         return jsonify({"status": "empty"})
 
-    # Monta URL usando o prefix da config (cam_bp.url_prefix e None no objeto)
+    # Monta URL usando o tipo do modulo para determinar o prefixo
+    mod_type = module.get("type", "cam")
     filename = files[0].name
     return jsonify({
         "status": "ok",
-        "url": f"{API_PREFIX}/{chip_id}/image/{filename}",
+        "url": f"/api/{mod_type}/{chip_id}/image/{filename}",
         "size_kb": round(files[0].stat().st_size / 1024, 1)
     })

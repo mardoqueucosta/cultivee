@@ -24,9 +24,11 @@
 
 #ifdef ENV_LOCAL
   #define SERVER_URL       "http://" LOCAL_SERVER_IP ":" LOCAL_SERVER_PORT
+  #define APP_URL          "http://" LOCAL_SERVER_IP ":" LOCAL_SERVER_PORT
 #endif
 #ifdef ENV_PRODUCTION
   #define SERVER_URL       "http://hidro.cultivee.com.br"
+  #define APP_URL          "https://hidro.cultivee.com.br"
 #endif
 
 // ===== HARDWARE (ESP32-WROOM-32D) =====

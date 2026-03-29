@@ -1,25 +1,25 @@
 /*
-  Cultivee - Produto: HidroCam
-  ESP32-WROVER-DEV + Camera OV2640 + Modulo Rele 2 canais
-  Controle hidroponico + camera integrada
+  Cultivee - Produto: Camera Standalone
+  ESP32-WROVER-DEV + Camera OV2640 (sem controle de reles)
+  Monitoramento visual — composto com modulo ctrl via grupos no servidor
 */
 
-#ifndef PRODUCT_HIDRO_CAM_H
-#define PRODUCT_HIDRO_CAM_H
+#ifndef PRODUCT_CAM_H
+#define PRODUCT_CAM_H
 
 // ===== MODULOS ATIVOS =====
-#define MOD_HIDRO
 #define MOD_CAM
+// SEM MOD_HIDRO — sem reles, sem fases
 
 // ===== IDENTIDADE =====
-#define MODULE_TYPE        "hidro-cam"
-#define PRODUCT_NAME       "Cultivee HidroCam"
-#define MDNS_NAME          "cultivee-hidro-cam"
-#define AP_SSID            "Cultivee-HidroCam"
+#define MODULE_TYPE        "cam"
+#define PRODUCT_NAME       "Cultivee Cam"
+#define MDNS_NAME          "cultivee-cam"
+#define AP_SSID            "Cultivee-Cam"
 
 // ===== SERVIDOR =====
 #define LOCAL_SERVER_IP    "192.168.7.233"
-#define LOCAL_SERVER_PORT  "5003"
+#define LOCAL_SERVER_PORT  "5002"
 #define REGISTER_INTERVAL  10000
 #define WIFI_TIMEOUT       15000
 
@@ -28,17 +28,13 @@
   #define APP_URL          "http://" LOCAL_SERVER_IP ":" LOCAL_SERVER_PORT
 #endif
 #ifdef ENV_PRODUCTION
-  #define SERVER_URL       "http://hidro-cam.cultivee.com.br"
-  #define APP_URL          "https://hidro-cam.cultivee.com.br"
+  #define SERVER_URL       "http://cam.cultivee.com.br"
+  #define APP_URL          "https://cam.cultivee.com.br"
 #endif
 
-// ===== HARDWARE (ESP32-WROVER-DEV — GPIOs livres da camera) =====
-#define RELE_LAMPADA  13   // IN1 do modulo rele (GPIO13)
-#define RELE_BOMBA    14   // IN2 do modulo rele (GPIO14)
+// ===== HARDWARE (ESP32-WROVER-DEV) =====
 #define LED_ONBOARD   2    // LED azul da placa
 #define RESET_BTN     0    // Botao BOOT (GPIO0) - segurar 3s = reset WiFi
-#define RELE_ON       LOW
-#define RELE_OFF      HIGH
 
 // ===== PINOS CAMERA (ESP32-WROVER-DEV OV2640) =====
 #define PWDN_GPIO_NUM     -1
@@ -62,9 +58,6 @@
 #define NTP_SERVER     "pool.ntp.org"
 #define GMT_OFFSET     -3 * 3600
 #define DST_OFFSET     0
-
-// ===== FASES =====
-#define MAX_PHASES     10
 
 // ===== BOARD =====
 // Compilar com: esp32:esp32:esp32wroverkit

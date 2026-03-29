@@ -78,6 +78,7 @@ unsigned long lastAutoCheck = 0;
 #ifdef MOD_CAM
 bool cameraReady = false;
 bool camLiveMode = false;
+bool localStreamActive = false;  // true durante /stream local — suspende registro
 unsigned long lastLiveFrame = 0;
 #define LIVE_FRAME_INTERVAL 800
 #define LIVE_MAX_DURATION 120000
@@ -283,11 +284,17 @@ void loop() {
   }
   #endif
 
-  // Funcoes que precisam de WiFi
+  // Funcoes que precisam de WiFi (suspensas durante stream local)
   if (currentMode == MODE_CONNECTED) {
-    pollCommands();
-    registerOnServer();
-    checkWiFiConnection();
+    #ifdef MOD_CAM
+    if (!localStreamActive) {
+    #endif
+      pollCommands();
+      registerOnServer();
+      checkWiFiConnection();
+    #ifdef MOD_CAM
+    }
+    #endif
   }
 
   // Reconexao em background

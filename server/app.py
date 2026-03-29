@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
 Cultivee — Servidor Unificado
-Core: auth, modules, dashboard. Blueprints carregados conforme config.
-
-Mesma logica do firmware modular:
-  config.py seleciona MODULE_TYPE → blueprints hidro/cam registrados conforme produto.
+Core: auth, modules, groups, dashboard.
+Servidor unico serve todos os tipos de modulo (ctrl, cam, hidro-cam).
+Blueprints registrados em multiplos prefixos por tipo de firmware.
 """
 
 import os
@@ -23,7 +22,7 @@ import urllib.request
 import urllib.error
 from flask import Flask, request, jsonify, send_from_directory, render_template, Response
 
-from config import MODULE_TYPE, PORT, API_PREFIX, MOD_HIDRO, MOD_CAM, PRODUCT_NAME
+from config import PORT, PRODUCT_NAME
 import models
 
 logging.basicConfig(
@@ -143,6 +142,7 @@ def register_module():
 
     chip_id = data.get("chip_id", "")
     short_id = data.get("short_id", "")
+    module_type = data.get("type", "ctrl")
     ip = data.get("ip", "")
     ssid = data.get("ssid", "")
     rssi = data.get("rssi", 0)
@@ -154,7 +154,7 @@ def register_module():
     if not chip_id:
         return jsonify({"error": "chip_id obrigatorio"}), 400
 
-    models.register_module(chip_id, short_id, ip, ssid, rssi, uptime, free_heap, ctrl_data, capabilities)
+    models.register_module(chip_id, short_id, module_type, ip, ssid, rssi, uptime, free_heap, ctrl_data, capabilities)
 
     # Busca comandos pendentes
     pending = models.get_pending_commands(chip_id)
@@ -173,7 +173,7 @@ def register_module():
 
     poll_interval = models.get_poll_interval(chip_id)
 
-    log.info(f"Modulo registrado: {MODULE_TYPE} {chip_id} ({short_id}) IP={ip} poll={poll_interval}ms")
+    log.info(f"Modulo registrado: {module_type} {chip_id} ({short_id}) IP={ip} poll={poll_interval}ms")
     return jsonify({"status": "ok", "commands": simple_cmds, "poll_interval": poll_interval})
 
 
@@ -217,6 +217,7 @@ def pair_module():
     if not ok:
         return jsonify({"error": msg}), 400
 
+    module = models.get_module_by_chip_id(module["chip_id"])
     return jsonify({"status": "ok", "message": msg, "module": module})
 
 
@@ -245,72 +246,48 @@ def list_modules():
             m["ctrl_data"] = json.loads(m.get("ctrl_data", "{}"))
         except (json.JSONDecodeError, TypeError):
             m["ctrl_data"] = {}
+        try:
+            m["capabilities"] = json.loads(m.get("capabilities", "[]"))
+        except (json.JSONDecodeError, TypeError):
+            m["capabilities"] = []
 
     return jsonify({"modules": modules})
 
 
-# =====================================================================
-# Registro condicional de blueprints (espelha firmware #ifdef)
-# =====================================================================
-
-if MOD_HIDRO:
-    from bp_hidro import hidro_bp
-    app.register_blueprint(hidro_bp, url_prefix=API_PREFIX)
-    log.info(f"  [+] mod_hidro registrado em {API_PREFIX}/<chip_id>/...")
-
-if MOD_CAM:
-    from bp_cam import cam_bp
-    app.register_blueprint(cam_bp, url_prefix=API_PREFIX)
-    log.info(f"  [+] mod_cam registrado em {API_PREFIX}/<chip_id>/...")
 
 
 # =====================================================================
-# Config do PWA (injetada no template, espelha firmware products/*.h)
+# Registro de blueprints — todos os prefixos (servidor unico)
 # =====================================================================
 
-PWA_CONFIG = {
-    "ctrl": {
-        "title": "Cultivee Hidroponia",
-        "subtitle": "Hidroponia inteligente",
-        "navbar_subtitle": "Hidroponia Inteligente",
-        "short_name": "Hidroponia",
-        "description": "Controle de hidroponia inteligente",
-        "default_name": "Hidroponia",
-        "ap_ssid": "Cultivee-Hidro",
-        "api_prefix": "/api/ctrl",
-        "storage_prefix": "cultivee_ctrl",
-        "cache_prefix": "cultivee-ctrl",
-        "camera_enabled": False,
-    },
-    "hidro-cam": {
-        "title": "Cultivee HidroCam",
-        "subtitle": "HidroCam inteligente",
-        "navbar_subtitle": "HidroCam Inteligente",
-        "short_name": "HidroCam",
-        "description": "Controle de hidro-cam inteligente",
-        "default_name": "HidroCam",
-        "ap_ssid": "Cultivee-HidroCam",
-        "api_prefix": "/api/hidro-cam",
-        "storage_prefix": "cultivee_hidro_cam",
-        "cache_prefix": "cultivee-hidro-cam",
-        "camera_enabled": True,
-    },
-    "cam": {
-        "title": "Cultivee Camera",
-        "subtitle": "Camera inteligente",
-        "navbar_subtitle": "Camera Inteligente",
-        "short_name": "Camera",
-        "description": "Camera de monitoramento inteligente",
-        "default_name": "Camera",
-        "ap_ssid": "Cultivee-Cam",
-        "api_prefix": "/api/cam",
-        "storage_prefix": "cultivee_cam",
-        "cache_prefix": "cultivee-cam",
-        "camera_enabled": True,
-    },
+from bp_hidro import hidro_bp
+from bp_cam import cam_bp
+
+# Cada tipo de firmware encontra suas rotas pelo prefixo
+app.register_blueprint(hidro_bp, url_prefix="/api/ctrl", name="hidro_ctrl")
+app.register_blueprint(hidro_bp, url_prefix="/api/hidro-cam", name="hidro_hcam")
+app.register_blueprint(cam_bp, url_prefix="/api/cam", name="cam_standalone")
+app.register_blueprint(cam_bp, url_prefix="/api/hidro-cam", name="cam_hcam")
+
+log.info("  [+] hidro_bp registrado em /api/ctrl e /api/hidro-cam")
+log.info("  [+] cam_bp registrado em /api/cam e /api/hidro-cam")
+
+
+# =====================================================================
+# Config do PWA (unificada — features descobertas via API)
+# =====================================================================
+
+pwa_cfg = {
+    "title": "Cultivee",
+    "subtitle": "Cultivo inteligente",
+    "navbar_subtitle": "Cultivo Inteligente",
+    "short_name": "Cultivee",
+    "description": "Plataforma IoT para cultivo inteligente",
+    "default_name": "Dispositivo",
+    "ap_ssid": "Cultivee",
+    "storage_prefix": "cultivee",
+    "cache_prefix": "cultivee",
 }
-
-pwa_cfg = PWA_CONFIG.get(MODULE_TYPE, PWA_CONFIG["ctrl"])
 
 
 # =====================================================================
@@ -324,7 +301,6 @@ def dashboard():
 
 @app.route("/manifest.json")
 def manifest():
-    """Manifest dinamico — nome do produto vem da config."""
     data = json.dumps({
         "name": pwa_cfg["title"],
         "short_name": pwa_cfg["short_name"],
@@ -345,8 +321,7 @@ def manifest():
 
 @app.route("/sw.js")
 def service_worker():
-    """Service Worker dinamico — cache name usa prefix do produto."""
-    sw_js = f"""const APP_VERSION = '1.0.2';
+    sw_js = f"""const APP_VERSION = '2.0.0';
 const CACHE_NAME = '{pwa_cfg["cache_prefix"]}-v' + APP_VERSION;
 const STATIC_ASSETS = [
     '/',
@@ -368,7 +343,7 @@ self.addEventListener('install', (event) => {{
 self.addEventListener('activate', (event) => {{
     event.waitUntil(
         caches.keys().then((keys) => {{
-            const oldKeys = keys.filter(k => k.startsWith('{pwa_cfg["cache_prefix"]}-') && k !== CACHE_NAME);
+            const oldKeys = keys.filter(k => k.startsWith('cultivee') && k !== CACHE_NAME);
             if (oldKeys.length > 0) {{
                 self.clients.matchAll().then(clients => {{
                     clients.forEach(client => {{

@@ -26,15 +26,20 @@ product = sys.argv[1] if len(sys.argv) > 1 else "ctrl"
 PRODUCTS = {
     "ctrl": {
         "port": 5002,
-        "api_prefix": "/api/ctrl",
         "chip_id": "SIM_CTRL_0001",
         "short_id": "SC01",
         "module_type": "ctrl",
         "capabilities": ["hidro"],
     },
+    "cam": {
+        "port": 5002,
+        "chip_id": "SIM_CAM_0001",
+        "short_id": "CA01",
+        "module_type": "cam",
+        "capabilities": ["cam"],
+    },
     "hidro-cam": {
-        "port": 5003,
-        "api_prefix": "/api/hidro-cam",
+        "port": 5002,
         "chip_id": "SIM_HCAM_0001",
         "short_id": "SH01",
         "module_type": "hidro-cam",
@@ -43,7 +48,7 @@ PRODUCTS = {
 }
 
 if product not in PRODUCTS:
-    print(f"Produto invalido: {product}. Use: ctrl ou hidro-cam")
+    print(f"Produto invalido: {product}. Use: ctrl, cam ou hidro-cam")
     sys.exit(1)
 
 cfg = PRODUCTS[product]

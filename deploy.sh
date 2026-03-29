@@ -1,9 +1,6 @@
 #!/bin/bash
 # Deploy Cultivee para VPS
-# Uso: bash deploy.sh [ctrl|hidro-cam|site|all]
-#
-# Arquitetura modular: ctrl e hidro-cam usam o mesmo codigo (server/)
-# com env vars diferentes no docker-compose.yml.
+# Uso: bash deploy.sh [app|site|all]
 
 set -e
 
@@ -25,7 +22,6 @@ echo "=== Deploy Cultivee ($COMPONENT) ==="
 echo "-> Enviando docker-compose.yml..."
 $SCP_CMD "$PROJECT_DIR/docker-compose.yml" "$VPS_USER@$VPS_HOST:$REMOTE_DIR/docker-compose.yml"
 
-# ctrl e hidro-cam usam o mesmo server/ — deploy unificado
 deploy_server() {
     echo "-> Empacotando server/ (backend unificado)..."
     cd "$PROJECT_DIR"
@@ -44,15 +40,8 @@ deploy_server() {
     $SSH_CMD "cd $REMOTE_DIR && tar xzf /tmp/cultivee-server.tar.gz && rm /tmp/cultivee-server.tar.gz"
 }
 
-if [ "$COMPONENT" = "ctrl" ] || [ "$COMPONENT" = "server-ctrl" ] || [ "$COMPONENT" = "all" ]; then
+if [ "$COMPONENT" = "app" ] || [ "$COMPONENT" = "server" ] || [ "$COMPONENT" = "all" ]; then
     deploy_server
-fi
-
-if [ "$COMPONENT" = "hidro-cam" ] || [ "$COMPONENT" = "server-hidro-cam" ] || [ "$COMPONENT" = "all" ]; then
-    # So envia se ctrl nao enviou ainda (evita duplicar)
-    if [ "$COMPONENT" != "all" ]; then
-        deploy_server
-    fi
 fi
 
 if [ "$COMPONENT" = "site" ] || [ "$COMPONENT" = "all" ]; then
@@ -72,10 +61,8 @@ echo "-> Reconstruindo containers..."
 if [ "$COMPONENT" = "all" ]; then
     $SSH_CMD "cd $REMOTE_DIR && docker compose build --no-cache && docker compose up -d"
 else
-    # Mapeia componente para nome do servico no docker-compose
     case "$COMPONENT" in
-        ctrl|server-ctrl) SVC="ctrl" ;;
-        hidro-cam|server-hidro-cam) SVC="hidro-cam" ;;
+        app|server) SVC="app" ;;
         site) SVC="site" ;;
         *) SVC="$COMPONENT" ;;
     esac

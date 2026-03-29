@@ -109,15 +109,8 @@
                 </div>
             </section>
 
-            <!-- Camera (isolado — so aparece se MOD_CAM) -->
-            {% if config.camera_enabled %}
-            <section id="section-camera"></section>
-            {% endif %}
-
-            <!-- Dashboard (aparece quando modulo online) -->
-            <section id="section-dashboard" class="hidden">
-                <div id="dashboard-content"></div>
-            </section>
+            <!-- Conteudo dos modulos selecionados (renderizado por registry) -->
+            <section id="module-content"></section>
         </main>
 
         <footer class="footer">
@@ -250,12 +243,10 @@
     <!-- Config injetada pelo servidor (espelha firmware products/*.h) -->
     <script>
     window.CULTIVEE = {
-        apiPrefix: "{{ config.api_prefix }}",
         storagePrefix: "{{ config.storage_prefix }}",
         productName: "{{ config.title }}",
         defaultName: "{{ config.default_name }}",
-        apSsid: "{{ config.ap_ssid }}",
-        cameraEnabled: {{ 'true' if config.camera_enabled else 'false' }}
+        apSsid: "{{ config.ap_ssid }}"
     };
     </script>
     <script src="/static/app.js"></script>

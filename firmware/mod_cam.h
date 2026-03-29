@@ -116,6 +116,9 @@ void handleStream() {
     return;
   }
 
+  localStreamActive = true;  // Suspende registro/polling durante stream
+  Serial.println("Stream local: INICIADO");
+
   WiFiClient client = server.client();
   client.println("HTTP/1.1 200 OK");
   client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
@@ -142,6 +145,9 @@ void handleStream() {
     esp_camera_fb_return(fb);
     delay(100);
   }
+
+  localStreamActive = false;  // Retoma registro/polling
+  Serial.println("Stream local: PARADO");
 }
 
 // ===================== STATUS JSON =====================

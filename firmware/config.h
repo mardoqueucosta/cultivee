@@ -12,7 +12,8 @@
 
 // ===== PRODUTO ATIVO (descomente apenas um) =====
 // #include "../products/hidro.h"
-#include "../products/hidro-cam.h"
+// #include "../products/hidro-cam.h"
+#include "../products/cam.h"
 // =================================================
 
 // Protecao contra configuracao errada

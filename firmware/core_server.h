@@ -16,15 +16,16 @@ void sendCORS() {
 // ===================== CAPTIVE PORTAL =====================
 
 void handleCaptiveAndroid() {
-  Serial.println("Portal cativo: Android detectado");
-  server.sendHeader("Location", "http://192.168.4.1/");
-  server.send(302, "text/html", "<html><body><a href='http://192.168.4.1/'>Configurar WiFi</a></body></html>");
+  // Responde 204 para Android confiar no WiFi e nao priorizar 4G
+  // Sem 204, Android detecta "sem internet" e roteia tudo pelo 4G
+  Serial.println("Portal cativo: Android → 204 (WiFi confiavel)");
+  server.send(204);
 }
 
 void handleCaptiveApple() {
-  Serial.println("Portal cativo: Apple detectado");
-  server.sendHeader("Location", "http://192.168.4.1/");
-  server.send(302, "text/html", "<HTML><HEAD><TITLE>Cultivee</TITLE></HEAD><BODY>Redirecionando...</BODY></HTML>");
+  // Responde Success para iOS confiar no WiFi e nao priorizar dados moveis
+  Serial.println("Portal cativo: Apple → Success (WiFi confiavel)");
+  server.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
 }
 
 void handleCaptiveWindows() {
@@ -121,9 +122,8 @@ void handleSaveWiFi() {
 
   saveWiFiCredentials(ssid, pass);
 
-  // Determina URL do app baseado no produto
-  String appDomain = String(SERVER_URL);
-  appDomain.replace("http://", "https://");
+  // URL do app (definida no produto — sempre HTTPS em producao, HTTP em local)
+  String appDomain = String(APP_URL);
 
   String html = R"rawliteral(<!DOCTYPE html><html><head>
 <meta name='viewport' content='width=device-width,initial-scale=1'>
@@ -265,7 +265,7 @@ void core_register_routes() {
   server.on("/redirect", handleCaptiveWindows);
   server.on("/canonical.html", handleCaptiveGeneric);
   server.on("/success.txt", handleCaptiveGeneric);
-  server.on("/generate204", handleCaptiveGeneric);
+  server.on("/generate204", handleCaptiveAndroid);  // Android tambem usa sem underscore
   server.on("/mobile/status.php", handleCaptiveGeneric);
 
   server.onNotFound([]() {

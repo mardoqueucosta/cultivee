@@ -70,7 +70,22 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
+
+        CREATE TABLE IF NOT EXISTS groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
     """)
+
+    # Migracao: adiciona group_id na tabela modules (se nao existir)
+    try:
+        conn.execute("SELECT group_id FROM modules LIMIT 0")
+    except Exception:
+        conn.execute("ALTER TABLE modules ADD COLUMN group_id INTEGER REFERENCES groups(id)")
+
     conn.commit()
     conn.close()
 
@@ -159,7 +174,7 @@ def delete_token(token):
 
 # --- Modules ---
 
-def register_module(chip_id, short_id, ip="", ssid="", rssi=0, uptime=0, free_heap=0, ctrl_data="{}", capabilities="[]"):
+def register_module(chip_id, short_id, module_type="ctrl", ip="", ssid="", rssi=0, uptime=0, free_heap=0, ctrl_data="{}", capabilities="[]"):
     conn = get_db()
     existing = conn.execute(
         "SELECT * FROM modules WHERE chip_id = ?", (chip_id,)
@@ -191,13 +206,13 @@ def register_module(chip_id, short_id, ip="", ssid="", rssi=0, uptime=0, free_he
                 new_data[k] = existing_data[k]
         merged_ctrl = json.dumps(new_data)
         conn.execute(
-            "UPDATE modules SET ip = ?, last_seen = ?, ssid = ?, rssi = ?, uptime = ?, free_heap = ?, ctrl_data = ?, capabilities = ? WHERE chip_id = ?",
-            (ip, now, ssid, rssi, uptime, free_heap, merged_ctrl, capabilities, chip_id)
+            "UPDATE modules SET type = ?, ip = ?, last_seen = ?, ssid = ?, rssi = ?, uptime = ?, free_heap = ?, ctrl_data = ?, capabilities = ? WHERE chip_id = ?",
+            (module_type, ip, now, ssid, rssi, uptime, free_heap, merged_ctrl, capabilities, chip_id)
         )
     else:
         conn.execute(
-            "INSERT INTO modules (chip_id, short_id, type, ip, last_seen, ssid, rssi, uptime, free_heap, ctrl_data, capabilities) VALUES (?, ?, 'ctrl', ?, ?, ?, ?, ?, ?, ?, ?)",
-            (chip_id, short_id, ip, now, ssid, rssi, uptime, free_heap, ctrl_data, capabilities)
+            "INSERT INTO modules (chip_id, short_id, type, ip, last_seen, ssid, rssi, uptime, free_heap, ctrl_data, capabilities) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (chip_id, short_id, module_type, ip, now, ssid, rssi, uptime, free_heap, ctrl_data, capabilities)
         )
     conn.commit()
     conn.close()
@@ -341,3 +356,97 @@ def get_module_by_chip_id(chip_id):
     ).fetchone()
     conn.close()
     return dict(module) if module else None
+
+
+# --- Groups ---
+
+def create_group(user_id, name):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO groups (user_id, name) VALUES (?, ?)",
+        (user_id, name)
+    )
+    conn.commit()
+    group_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return group_id
+
+
+def get_user_groups(user_id):
+    conn = get_db()
+    groups = conn.execute(
+        "SELECT * FROM groups WHERE user_id = ? ORDER BY name", (user_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(g) for g in groups]
+
+
+def rename_group(group_id, user_id, name):
+    conn = get_db()
+    result = conn.execute(
+        "UPDATE groups SET name = ? WHERE id = ? AND user_id = ?",
+        (name, group_id, user_id)
+    )
+    conn.commit()
+    changed = result.rowcount > 0
+    conn.close()
+    return changed
+
+
+def delete_group(group_id, user_id):
+    conn = get_db()
+    # Verifica que o grupo pertence ao usuario
+    group = conn.execute(
+        "SELECT id FROM groups WHERE id = ? AND user_id = ?",
+        (group_id, user_id)
+    ).fetchone()
+    if not group:
+        conn.close()
+        return False
+    # Desassocia modulos do grupo
+    conn.execute(
+        "UPDATE modules SET group_id = NULL WHERE group_id = ?",
+        (group_id,)
+    )
+    # Deleta o grupo
+    conn.execute("DELETE FROM groups WHERE id = ?", (group_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def assign_module_to_group(chip_id, group_id, user_id):
+    conn = get_db()
+    # Verifica que modulo pertence ao usuario
+    module = conn.execute(
+        "SELECT id FROM modules WHERE chip_id = ? AND user_id = ?",
+        (chip_id, user_id)
+    ).fetchone()
+    if not module:
+        conn.close()
+        return False
+    # Verifica que grupo pertence ao usuario
+    group = conn.execute(
+        "SELECT id FROM groups WHERE id = ? AND user_id = ?",
+        (group_id, user_id)
+    ).fetchone()
+    if not group:
+        conn.close()
+        return False
+    conn.execute(
+        "UPDATE modules SET group_id = ? WHERE chip_id = ?",
+        (group_id, chip_id)
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def remove_module_from_group(chip_id, user_id):
+    conn = get_db()
+    conn.execute(
+        "UPDATE modules SET group_id = NULL WHERE chip_id = ? AND user_id = ?",
+        (chip_id, user_id)
+    )
+    conn.commit()
+    conn.close()

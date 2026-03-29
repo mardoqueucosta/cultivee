@@ -265,12 +265,10 @@ from bp_cam import cam_bp
 
 # Cada tipo de firmware encontra suas rotas pelo prefixo
 app.register_blueprint(hidro_bp, url_prefix="/api/ctrl", name="hidro_ctrl")
-app.register_blueprint(hidro_bp, url_prefix="/api/hidro-cam", name="hidro_hcam")
 app.register_blueprint(cam_bp, url_prefix="/api/cam", name="cam_standalone")
-app.register_blueprint(cam_bp, url_prefix="/api/hidro-cam", name="cam_hcam")
 
-log.info("  [+] hidro_bp registrado em /api/ctrl e /api/hidro-cam")
-log.info("  [+] cam_bp registrado em /api/cam e /api/hidro-cam")
+log.info("  [+] hidro_bp registrado em /api/ctrl")
+log.info("  [+] cam_bp registrado em /api/cam")
 
 
 # =====================================================================

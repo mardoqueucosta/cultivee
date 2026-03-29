@@ -35,11 +35,11 @@ services:
     labels:
       - "traefik.enable=true"
       # HTTPS — PWA e navegadores
-      - "traefik.http.routers.cultivee-app.rule=Host(`app.cultivee.com.br`) || Host(`hidro.cultivee.com.br`) || Host(`hidro-cam.cultivee.com.br`) || Host(`cam.cultivee.com.br`)"
+      - "traefik.http.routers.cultivee-app.rule=Host(`app.cultivee.com.br`) || Host(`hidro.cultivee.com.br`) || Host(`cam.cultivee.com.br`)"
       - "traefik.http.routers.cultivee-app.entrypoints=websecure"
       - "traefik.http.routers.cultivee-app.tls.certresolver=letsencrypt"
       # HTTP — ESP32 (sem TLS, nao redireciona)
-      - "traefik.http.routers.cultivee-app-http.rule=Host(`app.cultivee.com.br`) || Host(`hidro.cultivee.com.br`) || Host(`hidro-cam.cultivee.com.br`) || Host(`cam.cultivee.com.br`)"
+      - "traefik.http.routers.cultivee-app-http.rule=Host(`app.cultivee.com.br`) || Host(`hidro.cultivee.com.br`) || Host(`cam.cultivee.com.br`)"
       - "traefik.http.routers.cultivee-app-http.entrypoints=web"
       - "traefik.http.services.cultivee-app.loadbalancer.server.port=5002"
 

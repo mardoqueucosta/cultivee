@@ -41,8 +41,7 @@ cultivee/
 │
 ├── products/                 # 1 arquivo = 1 produto (define modulos + pinos)
 │   ├── hidro.h               # MOD_HIDRO — ESP32-WROOM, GPIO 4/5, reles
-│   ├── cam.h                 # MOD_CAM — ESP32-WROVER, camera standalone
-│   └── hidro-cam.h           # MOD_HIDRO + MOD_CAM — ESP32-WROVER (retrocompat)
+│   └── cam.h                 # MOD_CAM — ESP32-WROVER, camera standalone
 │
 ├── server/                   # UM servidor Flask unificado
 │   ├── app.py                # Core: auth, modules, PWA, blueprints em multiplos prefixos
@@ -137,14 +136,6 @@ ESP32 boot → connectWiFi → registerOnServer (POST /api/modules/register)
 - **AP:** Cultivee-Cam
 - **SERVER_URL prod:** `http://cam.cultivee.com.br`
 - **APP_URL prod:** `https://cam.cultivee.com.br`
-
-### HIDRO-CAM (ESP32-WROVER-DEV) — Retrocompatibilidade
-- **Porta:** COM9
-- **Board:** esp32:esp32:esp32wroverkit
-- **Flash:** ~98% (apertado)
-- **Reles:** GPIO13 (Luz), GPIO14 (Bomba) — ativos em LOW
-- **Camera:** Mesma do CAM
-- **AP:** Cultivee-HidroCam
 
 ### Compilar e gravar
 ```bash
@@ -266,7 +257,7 @@ moduleRenderers.sensor = {
 | Container | Servico | Porta | Dominios |
 |-----------|---------|-------|----------|
 | cultivee-site | Landing page (Nginx) | 80 | cultivee.com.br, www.cultivee.com.br |
-| cultivee-app | Servidor unificado (Flask/Gunicorn) | 5002 | app.cultivee.com.br, hidro.cultivee.com.br, hidro-cam.cultivee.com.br, cam.cultivee.com.br |
+| cultivee-app | Servidor unificado (Flask/Gunicorn) | 5002 | app.cultivee.com.br, hidro.cultivee.com.br, cam.cultivee.com.br |
 
 ### Deploy
 ```bash
@@ -280,7 +271,6 @@ bash deploy.sh all        # tudo
 - cultivee.com.br → proxied
 - app.cultivee.com.br → DNS only
 - hidro.cultivee.com.br → DNS only (alias retrocompat)
-- hidro-cam.cultivee.com.br → DNS only (alias retrocompat)
 - cam.cultivee.com.br → DNS only
 
 ### Desenvolvimento local
@@ -293,7 +283,6 @@ python run-app.py                   # porta 5002
 # Simuladores (em terminais separados)
 python -u sim_esp32.py ctrl         # codigo: SC01
 python -u sim_esp32.py cam          # codigo: CA01
-python -u sim_esp32.py hidro-cam    # codigo: SH01
 ```
 
 ---

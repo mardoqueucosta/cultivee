@@ -38,17 +38,10 @@ PRODUCTS = {
         "module_type": "cam",
         "capabilities": ["cam"],
     },
-    "hidro-cam": {
-        "port": 5002,
-        "chip_id": "SIM_HCAM_0001",
-        "short_id": "SH01",
-        "module_type": "hidro-cam",
-        "capabilities": ["hidro", "cam"],
-    },
 }
 
 if product not in PRODUCTS:
-    print(f"Produto invalido: {product}. Use: ctrl, cam ou hidro-cam")
+    print(f"Produto invalido: {product}. Use: ctrl ou cam")
     sys.exit(1)
 
 cfg = PRODUCTS[product]

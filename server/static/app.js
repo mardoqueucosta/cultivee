@@ -958,9 +958,9 @@ function cam_startCountdown(intervalSeconds) {
         cam_countdownRemaining--;
         if (cam_countdownRemaining <= 0) {
             cam_countdownRemaining = intervalSeconds;
-            // Nova captura deve ter chegado — refresh galeria
+            // Aguarda imagem chegar e atualiza galeria
             const camMod = modules.find(m => hasCap(m, 'cam'));
-            if (camMod && cam_recordOpen) cam_loadGallery(camMod.chip_id, camMod.type);
+            if (camMod && cam_recordOpen) cam_waitAndRefreshGallery(camMod.chip_id, camMod.type);
         }
         const bar = document.getElementById('cam-countdown-bar');
         const label = document.getElementById('cam-countdown-label');
@@ -971,6 +971,24 @@ function cam_startCountdown(intervalSeconds) {
             label.textContent = `Proxima captura em ${m}:${s}`;
         }
     }, 1000);
+}
+
+async function cam_waitAndRefreshGallery(chipId, moduleType) {
+    // Pega contagem atual
+    const prevTotal = cam_galleryImages.length > 0 ? cam_galleryImages[0].filename : '';
+    // Tenta ate 5x com 3s entre cada (max 15s de espera)
+    for (let i = 0; i < 5; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+            const data = await api(`${apiFor(moduleType)}/${chipId}/images?page=1&per_page=${CAM_GALLERY_PER_PAGE}`);
+            const newFirst = (data.images && data.images.length > 0) ? data.images[0].filename : '';
+            if (newFirst !== prevTotal) {
+                cam_galleryImages = data.images || [];
+                cam_renderGallery(data);
+                return;
+            }
+        } catch (e) { break; }
+    }
 }
 
 function cam_stopCountdown() {

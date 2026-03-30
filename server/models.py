@@ -99,6 +99,14 @@ def init_db():
         conn.execute("SELECT last_capture_at FROM modules LIMIT 0")
     except Exception:
         conn.execute("ALTER TABLE modules ADD COLUMN last_capture_at TEXT")
+    try:
+        conn.execute("SELECT cam_resolution FROM modules LIMIT 0")
+    except Exception:
+        conn.execute("ALTER TABLE modules ADD COLUMN cam_resolution TEXT DEFAULT 'UXGA'")
+    try:
+        conn.execute("SELECT cam_quality FROM modules LIMIT 0")
+    except Exception:
+        conn.execute("ALTER TABLE modules ADD COLUMN cam_quality INTEGER DEFAULT 10")
 
     conn.commit()
     conn.close()
@@ -468,7 +476,7 @@ def remove_module_from_group(chip_id, user_id):
 
 # --- Captura agendada ---
 
-def set_capture_config(chip_id, capture_interval=None, recording=None):
+def set_capture_config(chip_id, capture_interval=None, recording=None, cam_resolution=None, cam_quality=None):
     conn = get_db()
     updates = []
     params = []
@@ -478,6 +486,12 @@ def set_capture_config(chip_id, capture_interval=None, recording=None):
     if recording is not None:
         updates.append("recording = ?")
         params.append(1 if recording else 0)
+    if cam_resolution is not None:
+        updates.append("cam_resolution = ?")
+        params.append(str(cam_resolution))
+    if cam_quality is not None:
+        updates.append("cam_quality = ?")
+        params.append(int(cam_quality))
     if not updates:
         conn.close()
         return
@@ -500,6 +514,8 @@ def get_capture_config(chip_id):
         "capture_interval": row["capture_interval"] or 600,
         "recording": bool(row["recording"]),
         "last_capture_at": row["last_capture_at"],
+        "cam_resolution": row["cam_resolution"] or "UXGA",
+        "cam_quality": row["cam_quality"] or 10,
     }
 
 

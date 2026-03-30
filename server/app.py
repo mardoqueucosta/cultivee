@@ -199,6 +199,8 @@ def register_module():
         "poll_interval": poll_interval,
         "capture_interval": capture_cfg["capture_interval"],
         "recording": capture_cfg["recording"],
+        "cam_resolution": capture_cfg["cam_resolution"],
+        "cam_quality": capture_cfg["cam_quality"],
     })
 
 

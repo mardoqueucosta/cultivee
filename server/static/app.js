@@ -313,6 +313,8 @@ async function loadModules() {
         if (camMod) {
             cam_recording = !!camMod.recording;
             cam_captureInterval = camMod.capture_interval || 600;
+            cam_resolution = camMod.cam_resolution || 'UXGA';
+            cam_quality = camMod.cam_quality || 10;
         }
 
         renderModuleList();
@@ -712,6 +714,8 @@ let cam_captureOpen = true;
 let cam_recordOpen = false;
 let cam_recording = false;
 let cam_captureInterval = 600;
+let cam_resolution = 'UXGA';
+let cam_quality = 10;
 let cam_galleryImages = [];
 let cam_galleryPage = 1;
 let cam_countdownTimer = null;
@@ -757,6 +761,24 @@ function renderModule_cam(container, mod) {
                         <button id="live-btn" onclick="cam_liveToggle('${chipId}','${moduleType}')" style="flex:1;padding:10px;border-radius:10px;border:1px solid ${liveActive ? '#e74c3c' : 'var(--border)'};background:${liveActive ? 'rgba(231,76,60,0.1)' : 'var(--bg-card)'};color:${liveActive ? '#e74c3c' : 'var(--text-muted)'};font-weight:600;font-size:0.85rem;cursor:pointer" ${!camReady ? 'disabled' : ''}>
                             ${liveActive ? '&#9632; Parar' : '&#127909; Ao Vivo'}
                         </button>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:8px">
+                        <div style="flex:1">
+                            <label style="font-size:0.7rem;color:var(--text-dim)">Resolucao</label>
+                            <select class="config-select" onchange="cam_setResolution('${chipId}','${moduleType}',this.value)">
+                                <option value="VGA" ${cam_resolution=='VGA'?'selected':''}>640x480</option>
+                                <option value="SVGA" ${cam_resolution=='SVGA'?'selected':''}>800x600</option>
+                                <option value="UXGA" ${cam_resolution=='UXGA'?'selected':''}>1600x1200</option>
+                            </select>
+                        </div>
+                        <div style="flex:1">
+                            <label style="font-size:0.7rem;color:var(--text-dim)">Qualidade</label>
+                            <select class="config-select" onchange="cam_setQuality('${chipId}','${moduleType}',this.value)">
+                                <option value="8" ${cam_quality==8?'selected':''}>Alta (q8)</option>
+                                <option value="10" ${cam_quality==10?'selected':''}>Boa (q10)</option>
+                                <option value="15" ${cam_quality==15?'selected':''}>Normal (q15)</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -941,6 +963,20 @@ async function cam_toggleRecording(chipId, moduleType) {
     } catch (e) { alert('Erro: ' + e.message); }
 }
 
+async function cam_setResolution(chipId, moduleType, value) {
+    try {
+        await api(`${apiFor(moduleType)}/${chipId}/config`, { method: 'POST', body: { cam_resolution: value } });
+        cam_resolution = value;
+    } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function cam_setQuality(chipId, moduleType, value) {
+    try {
+        await api(`${apiFor(moduleType)}/${chipId}/config`, { method: 'POST', body: { cam_quality: parseInt(value) } });
+        cam_quality = parseInt(value);
+    } catch (e) { alert('Erro: ' + e.message); }
+}
+
 async function cam_setInterval(chipId, moduleType, value) {
     const interval = parseInt(value);
     try {
@@ -1042,12 +1078,17 @@ function cam_renderGallery(data) {
                 else ago = `${Math.floor(diff/86400)}d`;
             } catch(e) {}
         }
-        return `<div class="gallery-item">
-            <img src="${img.url}?token=${token}" alt="Captura" loading="lazy" />
+        const thumbSrc = img.thumb_url || img.url;
+        return `<div class="gallery-item" onclick="cam_openImage('${img.url}')">
+            <img src="${thumbSrc}?token=${token}" alt="Captura" loading="lazy" />
             ${ago ? `<span class="gallery-ago">${ago}</span>` : ''}
             <div class="gallery-info">${dateStr} · <span class="gallery-size">${sizeStr}</span></div>
         </div>`;
     }).join('');
+}
+
+function cam_openImage(url) {
+    window.open(url + '?token=' + token, '_blank');
 }
 
 function cam_galleryPrev() {

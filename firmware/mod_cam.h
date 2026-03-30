@@ -181,6 +181,14 @@ String cam_dashboard_html() {
   html += "<button id='cam-btn' onclick='cap()' style='flex:1;padding:10px;border-radius:10px;border:1px solid #3a3d45;background:#2a2d35;color:#aaa;font-weight:600;font-size:0.85rem;cursor:pointer' " + String(cameraReady ? "" : "disabled") + ">&#128247; Capturar</button>";
   html += "<button id='live-btn' onclick='live()' style='flex:1;padding:10px;border-radius:10px;border:1px solid #3a3d45;background:#2a2d35;color:#aaa;font-weight:600;font-size:0.85rem;cursor:pointer' " + String(cameraReady ? "" : "disabled") + ">&#127909; Ao Vivo</button>";
   html += "</div>";
+  // Dropdowns resolucao + qualidade
+  html += "<div style='display:flex;gap:8px;margin-top:8px'>";
+  html += "<div style='flex:1'><label style='font-size:0.7rem;color:#888'>Resolucao</label>";
+  html += "<select id='cam-res' onchange='setRes(this.value)' style='width:100%;padding:8px;border:1px solid #3a3d45;border-radius:8px;font-size:0.85rem;background:#2a2d35;color:#aaa'>";
+  html += "<option value='VGA'>640x480</option><option value='SVGA'>800x600</option><option value='UXGA' selected>1600x1200</option></select></div>";
+  html += "<div style='flex:1'><label style='font-size:0.7rem;color:#888'>Qualidade</label>";
+  html += "<select id='cam-qual' onchange='setQual(this.value)' style='width:100%;padding:8px;border:1px solid #3a3d45;border-radius:8px;font-size:0.85rem;background:#2a2d35;color:#aaa'>";
+  html += "<option value='8'>Alta (q8)</option><option value='10' selected>Boa (q10)</option><option value='15'>Normal (q15)</option></select></div></div>";
   // Captura Agendada (offline — timer local no JS)
   html += "<div style='margin-top:12px;padding-top:12px;border-top:1px solid #2a2d35'>";
   html += "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>";
@@ -243,6 +251,8 @@ im.innerHTML='<span style="color:#e74c3c;font-size:0.85rem">Erro ao capturar</sp
 b.disabled=false;b.innerHTML='&#128247; Capturar';
 })
 }
+function setRes(v){fetch('/set-camera?resolution='+v).then(()=>{}).catch(()=>{})}
+function setQual(v){fetch('/set-camera?quality='+v).then(()=>{}).catch(()=>{})}
 var schedOn=false,schedTimer=null,schedRemaining=0;
 function schedToggle(){
 var btn=document.getElementById('sched-btn'),badge=document.getElementById('sched-badge'),prog=document.getElementById('sched-progress'),sel=document.getElementById('sched-interval');
@@ -389,6 +399,29 @@ bool cam_process_command(String cmd, String obj) {
     return true;
   }
 
+  if (cmd == "set-camera") {
+    // Altera resolucao e qualidade da captura
+    String res = jsonVal(obj, "resolution");
+    int qual = jsonInt(obj, "quality");
+
+    sensor_t* s = esp_camera_sensor_get();
+    if (s) {
+      if (res == "UXGA") s->set_framesize(s, FRAMESIZE_UXGA);
+      else if (res == "SVGA") s->set_framesize(s, FRAMESIZE_SVGA);
+      else if (res == "VGA") s->set_framesize(s, FRAMESIZE_VGA);
+
+      if (qual > 0 && qual <= 63) s->set_quality(s, qual);
+
+      // Flush buffers apos mudar
+      for (int i = 0; i < 3; i++) {
+        camera_fb_t* fb = esp_camera_fb_get();
+        if (fb) esp_camera_fb_return(fb);
+      }
+      Serial.printf("Camera config: %s q%d\n", res.c_str(), qual);
+    }
+    return true;
+  }
+
   return false;
 }
 
@@ -398,9 +431,26 @@ void cam_setup() {
   cameraReady = initCamera();
 }
 
+void handleSetCamera() {
+  String res = server.arg("resolution");
+  int qual = server.arg("quality").toInt();
+  sensor_t* s = esp_camera_sensor_get();
+  if (s) {
+    if (res == "UXGA") s->set_framesize(s, FRAMESIZE_UXGA);
+    else if (res == "SVGA") s->set_framesize(s, FRAMESIZE_SVGA);
+    else if (res == "VGA") s->set_framesize(s, FRAMESIZE_VGA);
+    if (qual > 0 && qual <= 63) s->set_quality(s, qual);
+    for (int i = 0; i < 3; i++) { camera_fb_t* fb = esp_camera_fb_get(); if (fb) esp_camera_fb_return(fb); }
+    Serial.printf("Camera local: %s q%d\n", res.c_str(), qual);
+  }
+  sendCORS();
+  server.send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
 void cam_register_routes() {
   server.on("/capture", handleCapture);
   server.on("/stream", handleStream);
+  server.on("/set-camera", handleSetCamera);
 }
 
 #endif // MOD_CAM

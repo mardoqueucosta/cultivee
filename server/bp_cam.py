@@ -21,7 +21,24 @@ log = logging.getLogger(__name__)
 cam_bp = Blueprint("cam", __name__)
 
 CAPTURE_DIR = pathlib.Path(os.environ.get("DATA_DIR", "data")) / "captures"
+THUMB_DIR = pathlib.Path(os.environ.get("DATA_DIR", "data")) / "thumbs"
 LIVE_DIR = pathlib.Path(os.environ.get("DATA_DIR", "data")) / "live"
+THUMB_SIZE = (200, 150)
+
+
+def generate_thumbnail(chip_id, filename, img_data):
+    """Gera thumbnail 200x150 a partir dos bytes JPEG."""
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(img_data))
+        img.thumbnail(THUMB_SIZE)
+        thumb_dir = THUMB_DIR / chip_id
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+        thumb_path = thumb_dir / filename
+        img.save(thumb_path, "JPEG", quality=70)
+    except Exception as e:
+        log.warning(f"Erro gerando thumbnail: {e}")
 
 # In-memory live frame buffer (thread-safe)
 _live_frames = {}  # chip_id -> {"data": bytes, "ts": float}
@@ -86,6 +103,7 @@ def upload_capture(chip_id):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{timestamp}.jpg"
     (save_dir / filename).write_bytes(img_data)
+    generate_thumbnail(chip_id, filename, img_data)
 
     models.mark_capture(chip_id)
     log.info(f"Capture push [{chip_id[:4]}]: {filename} ({len(img_data)/1024:.1f} KB)")
@@ -112,8 +130,34 @@ def image(chip_id, filename):
     return Response(
         filepath.read_bytes(),
         mimetype="image/jpeg",
-        headers={"Cache-Control": "no-cache, no-store"}
+        headers={"Cache-Control": "public, max-age=86400"}
     )
+
+
+@cam_bp.route("/<chip_id>/thumb/<filename>")
+def thumb(chip_id, filename):
+    """Serve thumbnail da imagem (200x150, ~5KB)."""
+    from app import require_auth_func
+    user = require_auth_func()
+    if not user:
+        return jsonify({"error": "Nao autenticado"}), 401
+    request.user = user
+
+    module = _get_cam_module_or_404(chip_id)
+    if not module:
+        return jsonify({"error": "Nao autorizado"}), 403
+
+    # Tenta thumb, fallback pra imagem original
+    thumb_path = THUMB_DIR / chip_id / filename
+    if thumb_path.exists():
+        return Response(thumb_path.read_bytes(), mimetype="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+    filepath = CAPTURE_DIR / chip_id / filename
+    if not filepath.exists():
+        return jsonify({"error": "Imagem nao encontrada"}), 404
+    return Response(filepath.read_bytes(), mimetype="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @cam_bp.route("/<chip_id>/start-live")
@@ -265,13 +309,31 @@ def set_config(chip_id):
 
     interval = data.get("capture_interval")
     recording = data.get("recording")
+    resolution = data.get("cam_resolution")
+    quality = data.get("cam_quality")
 
     if interval is not None:
         interval = int(interval)
         if interval < 10 or interval > 86400:
             return jsonify({"error": "Intervalo deve ser entre 10s e 24h"}), 400
 
-    models.set_capture_config(chip_id, capture_interval=interval, recording=recording)
+    valid_resolutions = ["VGA", "SVGA", "UXGA"]
+    if resolution is not None and resolution not in valid_resolutions:
+        return jsonify({"error": f"Resolucao invalida. Use: {valid_resolutions}"}), 400
+
+    if quality is not None:
+        quality = int(quality)
+        if quality not in [8, 10, 15]:
+            return jsonify({"error": "Qualidade invalida. Use: 8, 10 ou 15"}), 400
+
+    models.set_capture_config(chip_id, capture_interval=interval, recording=recording,
+                              cam_resolution=resolution, cam_quality=quality)
+
+    # Se mudou resolucao ou qualidade, enfileira comando pro ESP32
+    if resolution is not None or quality is not None:
+        cfg = models.get_capture_config(chip_id)
+        models.add_pending_command(chip_id, "set-camera",
+            json.dumps({"resolution": cfg["cam_resolution"], "quality": cfg["cam_quality"]}))
     cfg = models.get_capture_config(chip_id)
     return jsonify({"status": "ok", **cfg})
 
@@ -314,6 +376,7 @@ def list_images(chip_id):
         images.append({
             "filename": f.name,
             "url": f"/api/{mod_type}/{chip_id}/image/{f.name}",
+            "thumb_url": f"/api/{mod_type}/{chip_id}/thumb/{f.name}",
             "size_kb": round(f.stat().st_size / 1024, 1),
             "created_at": created,
         })

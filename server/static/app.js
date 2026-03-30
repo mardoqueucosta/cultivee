@@ -715,7 +715,7 @@ let cam_galleryImages = [];
 let cam_galleryPage = 1;
 let cam_countdownTimer = null;
 let cam_countdownRemaining = 0;
-const CAM_GALLERY_PER_PAGE = 4;
+const CAM_GALLERY_PER_PAGE = 2;
 
 function renderModule_cam(container, mod) {
     const chipId = mod.chip_id;
@@ -737,12 +737,12 @@ function renderModule_cam(container, mod) {
                 <svg id="cam-chv" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" style="transition:transform 0.25s;${cam_expanded ? 'transform:rotate(180deg)' : ''}"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
             <div id="cam-body" style="display:${cam_expanded ? 'block' : 'none'};padding:0 14px 14px;border-top:1px solid var(--border)">
-                <div id="cam-img" style="background:var(--bg);border-radius:8px;min-height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-top:10px">
+                ${!cam_recording ? `<div id="cam-img" style="background:var(--bg);border-radius:8px;min-height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-top:10px">
                     ${cam_imageUrl
                         ? `<img src="${cam_imageUrl}&token=${token}" style="width:100%;border-radius:8px" alt="Captura" />`
                         : `<span style="color:#555;font-size:0.85rem">${camReady ? 'Toque em Capturar' : 'Camera nao conectada'}</span>`
                     }
-                </div>
+                </div>` : ''}
                 <div style="display:flex;gap:8px;margin-top:8px">
                     <button id="cam-btn" onclick="cam_capture('${chipId}','${moduleType}')" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-muted);font-weight:600;font-size:0.85rem;cursor:pointer" ${btnDisabled || liveActive ? 'disabled' : ''}>
                         ${cam_pending ? '&#9203; Capturando...' : '&#128247; Capturar'}

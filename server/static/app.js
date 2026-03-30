@@ -860,6 +860,8 @@ async function cam_capture(chipId, moduleType) {
     }
     cam_pending = false;
     if (btn) { btn.disabled = false; btn.innerHTML = '&#128247; Capturar'; }
+    // Refresh galeria apos captura
+    if (cam_recordOpen) cam_loadGallery(chipId, moduleType);
 }
 
 async function cam_liveToggle(chipId, moduleType) {
@@ -1155,7 +1157,15 @@ window.addEventListener("online", () => {
 initApp();
 
 // Polling
-setInterval(() => { if (token) loadModules(); }, 5000);
+setInterval(() => {
+    if (!token) return;
+    loadModules();
+    // Refresh galeria se secao aberta
+    if (cam_recordOpen) {
+        const camMod = modules.find(m => hasCap(m, 'cam'));
+        if (camMod) cam_loadGallery(camMod.chip_id, camMod.type);
+    }
+}, 5000);
 setInterval(() => {
     if (!token || !modules.length) return;
     if (Date.now() - lastToggleTime < TOGGLE_COOLDOWN) return;

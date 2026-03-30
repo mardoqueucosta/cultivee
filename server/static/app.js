@@ -956,7 +956,12 @@ function cam_startCountdown(intervalSeconds) {
     cam_countdownRemaining = intervalSeconds;
     cam_countdownTimer = setInterval(() => {
         cam_countdownRemaining--;
-        if (cam_countdownRemaining <= 0) cam_countdownRemaining = intervalSeconds;
+        if (cam_countdownRemaining <= 0) {
+            cam_countdownRemaining = intervalSeconds;
+            // Nova captura deve ter chegado — refresh galeria
+            const camMod = modules.find(m => hasCap(m, 'cam'));
+            if (camMod && cam_recordOpen) cam_loadGallery(camMod.chip_id, camMod.type);
+        }
         const bar = document.getElementById('cam-countdown-bar');
         const label = document.getElementById('cam-countdown-label');
         if (bar) bar.style.width = ((intervalSeconds - cam_countdownRemaining) / intervalSeconds * 100) + '%';
@@ -1157,15 +1162,7 @@ window.addEventListener("online", () => {
 initApp();
 
 // Polling
-setInterval(() => {
-    if (!token) return;
-    loadModules();
-    // Refresh galeria se secao aberta
-    if (cam_recordOpen) {
-        const camMod = modules.find(m => hasCap(m, 'cam'));
-        if (camMod) cam_loadGallery(camMod.chip_id, camMod.type);
-    }
-}, 5000);
+setInterval(() => { if (token) loadModules(); }, 5000);
 setInterval(() => {
     if (!token || !modules.length) return;
     if (Date.now() - lastToggleTime < TOGGLE_COOLDOWN) return;

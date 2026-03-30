@@ -708,7 +708,8 @@ let cam_liveOn = false;
 let cam_liveChipId = null;
 let cam_liveType = null;
 let cam_liveLastTs = 0;
-let cam_expanded = false;
+let cam_captureOpen = true;
+let cam_recordOpen = false;
 let cam_recording = false;
 let cam_captureInterval = 600;
 let cam_galleryImages = [];
@@ -725,39 +726,51 @@ function renderModule_cam(container, mod) {
     const statusText = camReady ? 'Pronta' : 'Offline';
     const btnDisabled = !camReady || cam_pending;
     const liveActive = cam_liveOn && cam_liveChipId === chipId;
+    const chevronSvg = (id, open) => `<svg id="${id}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" style="transition:transform 0.25s;${open ? 'transform:rotate(180deg)' : ''}"><polyline points="6 9 12 15 18 9"/></svg>`;
 
     container.innerHTML = `
         <div class="card" style="padding:0;overflow:hidden">
-            <div onclick="cam_toggle()" style="display:flex;justify-content:space-between;align-items:center;padding:14px;cursor:pointer">
-                <div style="display:flex;align-items:center;gap:8px">
-                    <span style="width:8px;height:8px;border-radius:50%;background:${statusColor}"></span>
-                    <b style="font-size:0.9rem">Camera</b>
-                    <span style="color:#888;font-size:0.8rem">${statusText}</span>
-                </div>
-                <svg id="cam-chv" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" style="transition:transform 0.25s;${cam_expanded ? 'transform:rotate(180deg)' : ''}"><polyline points="6 9 12 15 18 9"/></svg>
+            <!-- Header Camera -->
+            <div style="display:flex;align-items:center;gap:8px;padding:14px">
+                <span style="width:8px;height:8px;border-radius:50%;background:${statusColor}"></span>
+                <b style="font-size:0.9rem">Camera</b>
+                <span style="color:#888;font-size:0.8rem">${statusText}</span>
             </div>
-            <div id="cam-body" style="display:${cam_expanded ? 'block' : 'none'};padding:0 14px 14px;border-top:1px solid var(--border)">
-                ${!cam_recording ? `<div id="cam-img" style="background:var(--bg);border-radius:8px;min-height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-top:10px">
-                    ${cam_imageUrl
-                        ? `<img src="${cam_imageUrl}&token=${token}" style="width:100%;border-radius:8px" alt="Captura" />`
-                        : `<span style="color:#555;font-size:0.85rem">${camReady ? 'Toque em Capturar' : 'Camera nao conectada'}</span>`
-                    }
-                </div>` : ''}
-                <div style="display:flex;gap:8px;margin-top:8px">
-                    <button id="cam-btn" onclick="cam_capture('${chipId}','${moduleType}')" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-muted);font-weight:600;font-size:0.85rem;cursor:pointer" ${btnDisabled || liveActive ? 'disabled' : ''}>
-                        ${cam_pending ? '&#9203; Capturando...' : '&#128247; Capturar'}
-                    </button>
-                    <button id="live-btn" onclick="cam_liveToggle('${chipId}','${moduleType}')" style="flex:1;padding:10px;border-radius:10px;border:1px solid ${liveActive ? '#e74c3c' : 'var(--border)'};background:${liveActive ? 'rgba(231,76,60,0.1)' : 'var(--bg-card)'};color:${liveActive ? '#e74c3c' : 'var(--text-muted)'};font-weight:600;font-size:0.85rem;cursor:pointer" ${!camReady ? 'disabled' : ''}>
-                        ${liveActive ? '&#9632; Parar' : '&#127909; Ao Vivo'}
-                    </button>
-                </div>
 
-                <!-- Captura Agendada -->
-                <div class="scheduled-section" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                        <b style="font-size:0.85rem;color:var(--text)">Captura Agendada</b>
+            <!-- Dropdown: Captura -->
+            <div class="cam-dropdown">
+                <div class="cam-dropdown-header" onclick="cam_toggleSection('capture')">
+                    <span>Captura</span>
+                    ${chevronSvg('chv-capture', cam_captureOpen)}
+                </div>
+                <div class="cam-dropdown-body" id="cam-section-capture" style="display:${cam_captureOpen ? 'block' : 'none'}">
+                    <div id="cam-img" style="background:var(--bg);border-radius:8px;min-height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+                        ${cam_imageUrl
+                            ? `<img src="${cam_imageUrl}&token=${token}" style="width:100%;border-radius:8px" alt="Captura" />`
+                            : `<span style="color:#555;font-size:0.85rem">${camReady ? 'Toque em Capturar' : 'Camera nao conectada'}</span>`
+                        }
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:8px">
+                        <button id="cam-btn" onclick="cam_capture('${chipId}','${moduleType}')" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-muted);font-weight:600;font-size:0.85rem;cursor:pointer" ${btnDisabled || liveActive ? 'disabled' : ''}>
+                            ${cam_pending ? '&#9203; Capturando...' : '&#128247; Capturar'}
+                        </button>
+                        <button id="live-btn" onclick="cam_liveToggle('${chipId}','${moduleType}')" style="flex:1;padding:10px;border-radius:10px;border:1px solid ${liveActive ? '#e74c3c' : 'var(--border)'};background:${liveActive ? 'rgba(231,76,60,0.1)' : 'var(--bg-card)'};color:${liveActive ? '#e74c3c' : 'var(--text-muted)'};font-weight:600;font-size:0.85rem;cursor:pointer" ${!camReady ? 'disabled' : ''}>
+                            ${liveActive ? '&#9632; Parar' : '&#127909; Ao Vivo'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dropdown: Gravacao + Galeria -->
+            <div class="cam-dropdown">
+                <div class="cam-dropdown-header" onclick="cam_toggleSection('record')">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span>Gravacao</span>
                         ${cam_recording ? '<span class="scheduled-badge"><span class="rec-dot-green"></span> Gravando</span>' : ''}
                     </div>
+                    ${chevronSvg('chv-record', cam_recordOpen)}
+                </div>
+                <div class="cam-dropdown-body" id="cam-section-record" style="display:${cam_recordOpen ? 'block' : 'none'}">
                     <div style="margin-bottom:8px">
                         <label style="font-size:0.75rem;color:var(--text-dim)">Intervalo</label>
                         <select id="cam-interval" class="config-select" onchange="cam_setInterval('${chipId}','${moduleType}',this.value)" ${cam_recording ? 'disabled' : ''}>
@@ -778,34 +791,46 @@ function renderModule_cam(container, mod) {
                         <span>${cam_recording ? '&#9632;' : '&#9654;'}</span>
                         <span>${cam_recording ? 'Parar Gravacao' : 'Iniciar Gravacao'}</span>
                     </button>
-                </div>
 
-                <!-- Galeria -->
-                <div class="gallery-section" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                        <b style="font-size:0.85rem;color:var(--text)">Galeria</b>
-                        <div class="gallery-nav" id="cam-gallery-nav"></div>
-                    </div>
-                    <div id="cam-gallery-grid" class="gallery-grid">
-                        <span style="color:var(--text-dim);font-size:0.8rem;grid-column:1/-1;text-align:center;padding:1rem">Carregando...</span>
+                    <!-- Galeria dentro de Gravacao -->
+                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                            <b style="font-size:0.85rem;color:var(--text)">Galeria</b>
+                            <div class="gallery-nav" id="cam-gallery-nav"></div>
+                        </div>
+                        <div id="cam-gallery-grid" class="gallery-grid">
+                            <span style="color:var(--text-dim);font-size:0.8rem;grid-column:1/-1;text-align:center;padding:1rem">Carregando...</span>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>`;
 
-    if (cam_expanded && !cam_imageUrl && camReady) cam_loadLast(chipId, moduleType);
-    if (cam_expanded) {
+    if (cam_captureOpen && !cam_imageUrl && camReady) cam_loadLast(chipId, moduleType);
+    if (cam_recordOpen) {
         cam_loadGallery(chipId, moduleType);
         if (cam_recording) cam_startCountdown(cam_captureInterval);
     }
 }
 
-function cam_toggle() {
-    cam_expanded = !cam_expanded;
-    const body = document.getElementById("cam-body");
-    const chevron = document.getElementById("cam-chv");
-    if (body) body.style.display = cam_expanded ? 'block' : 'none';
-    if (chevron) chevron.style.transform = cam_expanded ? 'rotate(180deg)' : '';
+function cam_toggleSection(section) {
+    if (section === 'capture') {
+        cam_captureOpen = !cam_captureOpen;
+        const body = document.getElementById('cam-section-capture');
+        const chv = document.getElementById('chv-capture');
+        if (body) body.style.display = cam_captureOpen ? 'block' : 'none';
+        if (chv) chv.style.transform = cam_captureOpen ? 'rotate(180deg)' : '';
+    } else if (section === 'record') {
+        cam_recordOpen = !cam_recordOpen;
+        const body = document.getElementById('cam-section-record');
+        const chv = document.getElementById('chv-record');
+        if (body) body.style.display = cam_recordOpen ? 'block' : 'none';
+        if (chv) chv.style.transform = cam_recordOpen ? 'rotate(180deg)' : '';
+        if (cam_recordOpen) {
+            const camMod = modules.find(m => hasCap(m, 'cam'));
+            if (camMod) cam_loadGallery(camMod.chip_id, camMod.type);
+        }
+    }
 }
 
 async function cam_capture(chipId, moduleType) {

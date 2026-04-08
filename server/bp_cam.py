@@ -314,7 +314,7 @@ def set_config(chip_id):
 
     if interval is not None:
         interval = int(interval)
-        if interval < 10 or interval > 86400:
+        if interval < 30 or interval > 86400:
             return jsonify({"error": "Intervalo deve ser entre 10s e 24h"}), 400
 
     valid_resolutions = ["VGA", "SVGA", "UXGA"]

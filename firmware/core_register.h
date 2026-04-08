@@ -187,6 +187,33 @@ void registerOnServer() {
       }
     }
 
+    // Sincroniza config da camera do servidor (persiste entre reboots do ESP)
+    #ifdef MOD_CAM
+    int resKey = response.indexOf("\"cam_resolution\":\"");
+    if (resKey >= 0) {
+      int resStart = resKey + 18;
+      int resEnd = response.indexOf("\"", resStart);
+      if (resEnd > resStart) {
+        String res = response.substring(resStart, resEnd);
+        framesize_t newSize = FRAMESIZE_SVGA;
+        if (res == "UXGA") newSize = FRAMESIZE_UXGA;
+        else if (res == "VGA") newSize = FRAMESIZE_VGA;
+        if (newSize != captureFrameSize) {
+          captureFrameSize = newSize;
+          Serial.printf("Sync config: resolucao=%s\n", res.c_str());
+        }
+      }
+    }
+    int qualKey = response.indexOf("\"cam_quality\":");
+    if (qualKey >= 0) {
+      int newQual = response.substring(qualKey + 14).toInt();
+      if (newQual > 0 && newQual <= 63 && newQual != captureQuality) {
+        captureQuality = newQual;
+        Serial.printf("Sync config: qualidade=%d\n", newQual);
+      }
+    }
+    #endif
+
     Serial.printf("Registrado OK (poll=%lums)\n", currentPollInterval);
     processPendingCommands(response);
   } else {

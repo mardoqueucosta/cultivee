@@ -308,13 +308,14 @@ async function loadModules() {
         prefs._seen = modules.map(m => m.chip_id);
         saveModulePrefs(prefs);
 
-        // Sync capture state from cam module
+        // Sync capture state from cam module (config vive em ctrl_data)
         const camMod = modules.find(m => hasCap(m, 'cam'));
         if (camMod) {
-            cam_recording = !!camMod.recording;
-            cam_captureInterval = camMod.capture_interval || 600;
-            cam_resolution = camMod.cam_resolution || 'UXGA';
-            cam_quality = camMod.cam_quality || 10;
+            const cd = camMod.ctrl_data || {};
+            cam_recording = !!cd.recording;
+            cam_captureInterval = cd.capture_interval || 600;
+            cam_resolution = cd.cam_resolution || 'UXGA';
+            cam_quality = cd.cam_quality || 10;
         }
 
         renderModuleList();
@@ -714,13 +715,13 @@ let cam_captureOpen = true;
 let cam_recordOpen = false;
 let cam_recording = false;
 let cam_captureInterval = 600;
-let cam_resolution = 'UXGA';
-let cam_quality = 10;
+let cam_resolution = 'SVGA';
+let cam_quality = 8;
 let cam_galleryImages = [];
 let cam_galleryPage = 1;
 let cam_countdownTimer = null;
 let cam_countdownRemaining = 0;
-const CAM_GALLERY_PER_PAGE = 2;
+const CAM_GALLERY_PER_PAGE = 20;
 
 function renderModule_cam(container, mod) {
     const chipId = mod.chip_id;
@@ -796,7 +797,6 @@ function renderModule_cam(container, mod) {
                     <div style="margin-bottom:8px">
                         <label style="font-size:0.75rem;color:var(--text-dim)">Intervalo</label>
                         <select id="cam-interval" class="config-select" onchange="cam_setInterval('${chipId}','${moduleType}',this.value)" ${cam_recording ? 'disabled' : ''}>
-                            <option value="10" ${cam_captureInterval==10?'selected':''}>10 segundos</option>
                             <option value="30" ${cam_captureInterval==30?'selected':''}>30 segundos</option>
                             <option value="60" ${cam_captureInterval==60?'selected':''}>1 minuto</option>
                             <option value="300" ${cam_captureInterval==300?'selected':''}>5 minutos</option>
@@ -814,14 +814,18 @@ function renderModule_cam(container, mod) {
                         <span>${cam_recording ? 'Parar Gravacao' : 'Iniciar Gravacao'}</span>
                     </button>
 
-                    <!-- Galeria dentro de Gravacao -->
+                    <!-- Galeria carrossel -->
                     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                             <b style="font-size:0.85rem;color:var(--text)">Galeria</b>
-                            <div class="gallery-nav" id="cam-gallery-nav"></div>
+                            <span id="cam-gallery-counter" style="font-size:0.7rem;color:var(--text-dim)"></span>
                         </div>
-                        <div id="cam-gallery-grid" class="gallery-grid">
-                            <span style="color:var(--text-dim);font-size:0.8rem;grid-column:1/-1;text-align:center;padding:1rem">Carregando...</span>
+                        <div style="position:relative">
+                            <div id="cam-gallery-track" style="display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:4px 0">
+                                <span style="color:var(--text-dim);font-size:0.8rem;text-align:center;padding:1rem;width:100%">Carregando...</span>
+                            </div>
+                            <button id="cam-gallery-prev" onclick="cam_scrollGallery(-1)" style="position:absolute;left:0;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:14px;cursor:pointer;display:none;z-index:2">&lt;</button>
+                            <button id="cam-gallery-next" onclick="cam_scrollGallery(1)" style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:14px;cursor:pointer;display:none;z-index:2">&gt;</button>
                         </div>
                     </div>
                 </div>
@@ -1039,65 +1043,75 @@ async function cam_loadGallery(chipId, moduleType) {
         cam_galleryImages = data.images || [];
         cam_renderGallery(data);
     } catch (e) {
-        const grid = document.getElementById('cam-gallery-grid');
-        if (grid) grid.innerHTML = '<span style="color:var(--text-dim);font-size:0.8rem;grid-column:1/-1;text-align:center;padding:1rem">Erro ao carregar</span>';
+        const track = document.getElementById('cam-gallery-track');
+        if (track) track.innerHTML = '<span style="color:var(--text-dim);font-size:0.8rem;text-align:center;padding:1rem;width:100%">Erro ao carregar</span>';
     }
 }
 
 function cam_renderGallery(data) {
-    const grid = document.getElementById('cam-gallery-grid');
-    const nav = document.getElementById('cam-gallery-nav');
-    if (!grid) return;
+    const track = document.getElementById('cam-gallery-track');
+    const counter = document.getElementById('cam-gallery-counter');
+    if (!track) return;
 
     if (!data.images || data.images.length === 0) {
-        grid.innerHTML = '<span style="color:var(--text-dim);font-size:0.8rem;grid-column:1/-1;text-align:center;padding:1rem">Nenhuma captura salva</span>';
-        if (nav) nav.innerHTML = '';
+        track.innerHTML = '<span style="color:var(--text-dim);font-size:0.8rem;text-align:center;padding:1rem;width:100%">Nenhuma captura salva</span>';
+        if (counter) counter.textContent = '';
         return;
     }
 
-    if (nav) {
-        nav.innerHTML = `
-            <button class="gallery-nav-btn" onclick="cam_galleryPrev()" ${data.page <= 1 ? 'disabled' : ''}>&lt;</button>
-            <span style="font-size:0.7rem;color:var(--text-dim)">${data.page}/${data.pages}</span>
-            <button class="gallery-nav-btn" onclick="cam_galleryNext()" ${data.page >= data.pages ? 'disabled' : ''}>&gt;</button>
-        `;
-    }
+    if (counter) counter.textContent = `${data.total} fotos`;
 
-    grid.innerHTML = data.images.map(img => {
+    track.innerHTML = data.images.map(img => {
         const sizeStr = img.size_kb >= 1024 ? (img.size_kb/1024).toFixed(1)+' MB' : Math.round(img.size_kb)+' KB';
         let dateStr = '';
         let ago = '';
         if (img.created_at) {
             try {
-                const d = new Date(img.created_at);
+                const d = new Date(img.created_at + '-03:00');
                 dateStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
                 const diff = Math.floor((Date.now() - d.getTime()) / 1000);
-                if (diff < 60) ago = `${diff}s`;
-                else if (diff < 3600) ago = `${Math.floor(diff/60)}min`;
-                else if (diff < 86400) ago = `${Math.floor(diff/3600)}h`;
-                else ago = `${Math.floor(diff/86400)}d`;
+                if (diff > 0 && diff < 60) ago = `${diff}s`;
+                else if (diff >= 60 && diff < 3600) ago = `${Math.floor(diff/60)}min`;
+                else if (diff >= 3600 && diff < 86400) ago = `${Math.floor(diff/3600)}h`;
+                else if (diff >= 86400) ago = `${Math.floor(diff/86400)}d`;
             } catch(e) {}
         }
         const thumbSrc = img.thumb_url || img.url;
-        return `<div class="gallery-item" onclick="cam_openImage('${img.url}')">
-            <img src="${thumbSrc}?token=${token}" alt="Captura" loading="lazy" />
-            ${ago ? `<span class="gallery-ago">${ago}</span>` : ''}
-            <div class="gallery-info">${dateStr} · <span class="gallery-size">${sizeStr}</span></div>
+        return `<div style="flex:0 0 calc(50% - 4px);scroll-snap-align:start;border-radius:8px;overflow:hidden;position:relative;background:var(--bg-card);cursor:pointer" onclick="cam_openImage('${img.url}')">
+            <img src="${thumbSrc}?token=${token}" alt="Captura" loading="lazy" style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block" />
+            ${ago ? `<span style="position:absolute;top:4px;right:4px;font-size:0.6rem;font-weight:700;color:#fff;background:rgba(231,76,60,0.85);padding:1px 6px;border-radius:99px">${ago}</span>` : ''}
+            <div style="padding:4px 6px;font-size:0.65rem;color:var(--text-dim)">${dateStr} · ${sizeStr}</div>
         </div>`;
     }).join('');
+
+    const prevBtn = document.getElementById('cam-gallery-prev');
+    const nextBtn = document.getElementById('cam-gallery-next');
+    if (prevBtn && nextBtn && data.images.length > 2) {
+        prevBtn.style.display = 'block';
+        nextBtn.style.display = 'block';
+    }
+    cam_updateGalleryBtns();
+    track.addEventListener('scroll', cam_updateGalleryBtns, {passive: true});
+}
+
+function cam_updateGalleryBtns() {
+    const track = document.getElementById('cam-gallery-track');
+    const prevBtn = document.getElementById('cam-gallery-prev');
+    const nextBtn = document.getElementById('cam-gallery-next');
+    if (!track || !prevBtn || !nextBtn) return;
+    prevBtn.style.opacity = track.scrollLeft > 10 ? '1' : '0.3';
+    nextBtn.style.opacity = track.scrollLeft < track.scrollWidth - track.clientWidth - 10 ? '1' : '0.3';
+}
+
+function cam_scrollGallery(dir) {
+    const track = document.getElementById('cam-gallery-track');
+    if (!track) return;
+    const step = track.clientWidth;
+    track.scrollBy({left: dir * step, behavior: 'smooth'});
 }
 
 function cam_openImage(url) {
     window.open(url + '?token=' + token, '_blank');
-}
-
-function cam_galleryPrev() {
-    if (cam_galleryPage > 1) { cam_galleryPage--; forceFullRefresh(); }
-}
-
-function cam_galleryNext() {
-    cam_galleryPage++;
-    forceFullRefresh();
 }
 
 // Sync recording state from modules data
@@ -1105,7 +1119,9 @@ function cam_syncState(mod) {
     if (!mod || !mod.ctrl_data) return;
     const cfg = mod.ctrl_data;
     if (cfg.capture_interval) cam_captureInterval = cfg.capture_interval;
-    // recording state comes from module-level field, not ctrl_data
+    if (cfg.recording !== undefined) cam_recording = !!cfg.recording;
+    if (cfg.cam_resolution) cam_resolution = cfg.cam_resolution;
+    if (cfg.cam_quality) cam_quality = cfg.cam_quality;
 }
 
 // =====================================================================

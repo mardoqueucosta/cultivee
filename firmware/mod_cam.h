@@ -31,9 +31,11 @@ bool initCamera() {
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_VGA;
-  config.jpeg_quality = 12;
-  config.fb_count = 2;
+  config.frame_size = FRAMESIZE_UXGA;  // Init na resolucao maxima para alocar buffer suficiente
+  config.jpeg_quality = 10;
+  config.fb_count = 1;                  // UXGA precisa de fb_count=1 (PSRAM limitada)
+  config.fb_location = CAMERA_FB_IN_PSRAM;
+  config.grab_mode = CAMERA_GRAB_LATEST;  // Sempre pega o frame mais recente
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
@@ -54,14 +56,52 @@ bool initCamera() {
   s->set_lenc(s, 1);
   s->set_saturation(s, 0);
 
+  // Flush frames iniciais (auto-exposure/WB estabiliza)
   for (int i = 0; i < 5; i++) {
     camera_fb_t* fb = esp_camera_fb_get();
     if (fb) esp_camera_fb_return(fb);
     delay(100);
   }
 
+  // Reduz para VGA como resolucao padrao (UXGA sob demanda para captura)
+  s->set_framesize(s, FRAMESIZE_VGA);
+  s->set_quality(s, 12);
+
   Serial.println("Camera OK!");
   return true;
+}
+
+// ===================== CAPTURE HELPERS =====================
+
+// Muda para resolucao de captura, tira foto, e volta para VGA
+camera_fb_t* captureHighRes() {
+  sensor_t* s = esp_camera_sensor_get();
+  if (!s) return nullptr;
+
+  // Seta resolucao e qualidade de captura
+  s->set_framesize(s, captureFrameSize);
+  s->set_quality(s, captureQuality);
+
+  // Flush buffers da resolucao anterior
+  for (int i = 0; i < 3; i++) {
+    camera_fb_t* old = esp_camera_fb_get();
+    if (old) esp_camera_fb_return(old);
+  }
+  delay(150);  // Aguarda sensor estabilizar na nova resolucao
+
+  camera_fb_t* fb = esp_camera_fb_get();
+  return fb;
+}
+
+void restoreDefaultRes() {
+  sensor_t* s = esp_camera_sensor_get();
+  if (!s) return;
+  s->set_framesize(s, FRAMESIZE_VGA);
+  s->set_quality(s, 12);
+  for (int i = 0; i < 2; i++) {
+    camera_fb_t* old = esp_camera_fb_get();
+    if (old) esp_camera_fb_return(old);
+  }
 }
 
 // ===================== ROUTE HANDLERS =====================
@@ -73,14 +113,9 @@ void handleCapture() {
     return;
   }
 
-  // Flush stale frames from buffer (fb_count=2, podem estar velhos apos stream)
-  for (int i = 0; i < 3; i++) {
-    camera_fb_t* old = esp_camera_fb_get();
-    if (old) esp_camera_fb_return(old);
-  }
-
-  camera_fb_t* fb = esp_camera_fb_get();
+  camera_fb_t* fb = captureHighRes();
   if (!fb) {
+    restoreDefaultRes();
     sendCORS();
     server.send(500, "application/json", "{\"error\":\"Erro ao capturar\"}");
     return;
@@ -106,6 +141,7 @@ void handleCapture() {
 
   size_t sent = fb->len;
   esp_camera_fb_return(fb);
+  restoreDefaultRes();
   Serial.printf("Capture: %d bytes\n", sent);
 }
 
@@ -116,10 +152,27 @@ void handleStream() {
     return;
   }
 
-  localStreamActive = true;  // Suspende registro/polling durante stream
+  localStreamActive = true;
   Serial.println("Stream local: INICIADO");
 
+  // Reduz resolucao e qualidade para stream fluido
+  sensor_t* s = esp_camera_sensor_get();
+  framesize_t prevSize = FRAMESIZE_VGA;
+  int prevQuality = 12;
+  if (s) {
+    prevSize = s->status.framesize;
+    prevQuality = s->status.quality;
+    s->set_framesize(s, FRAMESIZE_QVGA);  // 320x240 — leve para AP
+    s->set_quality(s, 15);                  // Compressao maior ~3-8KB/frame
+  }
+  // Flush buffers antigos da resolucao anterior
+  for (int i = 0; i < 3; i++) {
+    camera_fb_t* old = esp_camera_fb_get();
+    if (old) esp_camera_fb_return(old);
+  }
+
   WiFiClient client = server.client();
+  client.setNoDelay(true);
   client.println("HTTP/1.1 200 OK");
   client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
   client.println("Access-Control-Allow-Origin: *");
@@ -127,26 +180,37 @@ void handleStream() {
   client.println("Connection: close");
   client.println();
 
-  for (int i = 0; i < 600 && client.connected(); i++) {
+  unsigned long streamStart = millis();
+  while (client.connected() && (millis() - streamStart < 300000)) {  // Max 5 min
     camera_fb_t* fb = esp_camera_fb_get();
-    if (!fb) { delay(10); continue; }
+    if (!fb) { delay(5); continue; }
 
     client.printf("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", fb->len);
 
     uint8_t* buf = fb->buf;
     size_t remaining = fb->len;
     while (remaining > 0 && client.connected()) {
-      size_t chunk = remaining > 8192 ? 8192 : remaining;
+      size_t chunk = remaining > 16384 ? 16384 : remaining;
       client.write(buf, chunk);
       buf += chunk;
       remaining -= chunk;
     }
     client.print("\r\n");
     esp_camera_fb_return(fb);
-    delay(100);
+    delay(30);  // ~25-30 FPS alvo
   }
 
-  localStreamActive = false;  // Retoma registro/polling
+  // Restaura resolucao original para capturas
+  if (s) {
+    s->set_framesize(s, prevSize);
+    s->set_quality(s, prevQuality);
+    for (int i = 0; i < 3; i++) {
+      camera_fb_t* old = esp_camera_fb_get();
+      if (old) esp_camera_fb_return(old);
+    }
+  }
+
+  localStreamActive = false;
   Serial.println("Stream local: PARADO");
 }
 
@@ -185,10 +249,10 @@ String cam_dashboard_html() {
   html += "<div style='display:flex;gap:8px;margin-top:8px'>";
   html += "<div style='flex:1'><label style='font-size:0.7rem;color:#888'>Resolucao</label>";
   html += "<select id='cam-res' onchange='setRes(this.value)' style='width:100%;padding:8px;border:1px solid #3a3d45;border-radius:8px;font-size:0.85rem;background:#2a2d35;color:#aaa'>";
-  html += "<option value='VGA'>640x480</option><option value='SVGA'>800x600</option><option value='UXGA' selected>1600x1200</option></select></div>";
+  html += "<option value='VGA'>640x480</option><option value='SVGA' selected>800x600</option><option value='UXGA'>1600x1200</option></select></div>";
   html += "<div style='flex:1'><label style='font-size:0.7rem;color:#888'>Qualidade</label>";
   html += "<select id='cam-qual' onchange='setQual(this.value)' style='width:100%;padding:8px;border:1px solid #3a3d45;border-radius:8px;font-size:0.85rem;background:#2a2d35;color:#aaa'>";
-  html += "<option value='8'>Alta (q8)</option><option value='10' selected>Boa (q10)</option><option value='15'>Normal (q15)</option></select></div></div>";
+  html += "<option value='8' selected>Alta (q8)</option><option value='10'>Boa (q10)</option><option value='15'>Normal (q15)</option></select></div></div>";
   // Captura Agendada (offline — timer local no JS)
   html += "<div style='margin-top:12px;padding-top:12px;border-top:1px solid #2a2d35'>";
   html += "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>";
@@ -353,12 +417,7 @@ void cam_loop() {
 bool cam_process_command(String cmd, String obj) {
   if (cmd == "capture") {
     if (cameraReady) {
-      // Flush stale frames antes de capturar
-      for (int i = 0; i < 3; i++) {
-        camera_fb_t* old = esp_camera_fb_get();
-        if (old) esp_camera_fb_return(old);
-      }
-      camera_fb_t* fb = esp_camera_fb_get();
+      camera_fb_t* fb = captureHighRes();
       if (fb) {
         HTTPClient camHttp;
         String uploadUrl = String(SERVER_URL) + "/api/" + String(MODULE_TYPE) + "/" + chipId + "/upload-capture";
@@ -372,6 +431,7 @@ bool cam_process_command(String cmd, String obj) {
       } else {
         Serial.println("Capture: erro ao capturar frame");
       }
+      restoreDefaultRes();
     } else {
       Serial.println("Capture: camera nao inicializada");
     }
@@ -400,25 +460,17 @@ bool cam_process_command(String cmd, String obj) {
   }
 
   if (cmd == "set-camera") {
-    // Altera resolucao e qualidade da captura
+    // Salva resolucao/qualidade para proximas capturas
     String res = jsonVal(obj, "resolution");
     int qual = jsonInt(obj, "quality");
 
-    sensor_t* s = esp_camera_sensor_get();
-    if (s) {
-      if (res == "UXGA") s->set_framesize(s, FRAMESIZE_UXGA);
-      else if (res == "SVGA") s->set_framesize(s, FRAMESIZE_SVGA);
-      else if (res == "VGA") s->set_framesize(s, FRAMESIZE_VGA);
+    if (res == "UXGA") captureFrameSize = FRAMESIZE_UXGA;
+    else if (res == "SVGA") captureFrameSize = FRAMESIZE_SVGA;
+    else if (res == "VGA") captureFrameSize = FRAMESIZE_VGA;
 
-      if (qual > 0 && qual <= 63) s->set_quality(s, qual);
+    if (qual > 0 && qual <= 63) captureQuality = qual;
 
-      // Flush buffers apos mudar
-      for (int i = 0; i < 3; i++) {
-        camera_fb_t* fb = esp_camera_fb_get();
-        if (fb) esp_camera_fb_return(fb);
-      }
-      Serial.printf("Camera config: %s q%d\n", res.c_str(), qual);
-    }
+    Serial.printf("Camera config: %s q%d\n", res.c_str(), captureQuality);
     return true;
   }
 
@@ -434,15 +486,14 @@ void cam_setup() {
 void handleSetCamera() {
   String res = server.arg("resolution");
   int qual = server.arg("quality").toInt();
-  sensor_t* s = esp_camera_sensor_get();
-  if (s) {
-    if (res == "UXGA") s->set_framesize(s, FRAMESIZE_UXGA);
-    else if (res == "SVGA") s->set_framesize(s, FRAMESIZE_SVGA);
-    else if (res == "VGA") s->set_framesize(s, FRAMESIZE_VGA);
-    if (qual > 0 && qual <= 63) s->set_quality(s, qual);
-    for (int i = 0; i < 3; i++) { camera_fb_t* fb = esp_camera_fb_get(); if (fb) esp_camera_fb_return(fb); }
-    Serial.printf("Camera local: %s q%d\n", res.c_str(), qual);
-  }
+
+  if (res == "UXGA") captureFrameSize = FRAMESIZE_UXGA;
+  else if (res == "SVGA") captureFrameSize = FRAMESIZE_SVGA;
+  else if (res == "VGA") captureFrameSize = FRAMESIZE_VGA;
+
+  if (qual > 0 && qual <= 63) captureQuality = qual;
+
+  Serial.printf("Camera local: %s q%d\n", res.c_str(), captureQuality);
   sendCORS();
   server.send(200, "application/json", "{\"status\":\"ok\"}");
 }

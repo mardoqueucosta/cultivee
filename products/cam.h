@@ -28,8 +28,8 @@
   #define APP_URL          "http://" LOCAL_SERVER_IP ":" LOCAL_SERVER_PORT
 #endif
 #ifdef ENV_PRODUCTION
-  #define SERVER_URL       "http://cam.cultivee.com.br"
-  #define APP_URL          "https://cam.cultivee.com.br"
+  #define SERVER_URL       "http://app.cultivee.com.br"
+  #define APP_URL          "https://app.cultivee.com.br"
 #endif
 
 // ===== HARDWARE (ESP32-WROVER-DEV) =====

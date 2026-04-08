@@ -27,8 +27,8 @@
   #define APP_URL          "http://" LOCAL_SERVER_IP ":" LOCAL_SERVER_PORT
 #endif
 #ifdef ENV_PRODUCTION
-  #define SERVER_URL       "http://hidro.cultivee.com.br"
-  #define APP_URL          "https://hidro.cultivee.com.br"
+  #define SERVER_URL       "http://app.cultivee.com.br"
+  #define APP_URL          "https://app.cultivee.com.br"
 #endif
 
 // ===== HARDWARE (ESP32-WROOM-32D) =====
@@ -36,8 +36,8 @@
 #define RELE_BOMBA    5    // IN2 do modulo rele (GPIO5)
 #define LED_ONBOARD   2    // LED azul da placa
 #define RESET_BTN     0    // Botao BOOT (GPIO0) - segurar 3s = reset WiFi
-#define RELE_ON       HIGH   // SSR ativa em HIGH
-#define RELE_OFF      LOW
+#define RELE_ON       LOW    // Modulo rele ativa em LOW
+#define RELE_OFF      HIGH
 
 // ===== NTP =====
 #define NTP_SERVER     "pool.ntp.org"

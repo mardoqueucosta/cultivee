@@ -89,7 +89,15 @@ def relay(chip_id):
     if module.get("ip"):
         try:
             url = f"http://{module['ip']}/relay?device={device}&action={action}"
-            urllib.request.urlopen(url, timeout=1)
+            resp = urllib.request.urlopen(url, timeout=2)
+            data = resp.read()
+            # Proxy OK: atualiza ctrl_data no banco e retorna status real
+            try:
+                status = json.loads(data)
+                models.update_ctrl_data(chip_id, status)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            return Response(data, status=200, mimetype="application/json")
         except Exception:
             pass
     return jsonify({"status": "queued", "message": "Comando enviado, sera executado em breve"})

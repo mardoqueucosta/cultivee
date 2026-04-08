@@ -32,8 +32,9 @@ void clearWiFiCredentials() {
 }
 
 void startAP() {
-  WiFi.softAP(AP_SSID);
+  WiFi.softAP(AP_SSID, NULL, 6, 0, 4);  // Canal 6, sem senha, max 4 clientes
   delay(100);
+  esp_wifi_set_ps(WIFI_PS_NONE);  // Desabilita power saving — melhora latencia
   dnsServer.start(53, "*", WiFi.softAPIP());
   Serial.printf("AP ativo: %s IP: %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
 }
@@ -89,6 +90,9 @@ bool getCurrentTime(struct tm *t) {
 void tryReconnectWiFi() {
   if (currentMode != MODE_OFFLINE) return;
   if (savedSSID.length() == 0) return;
+  #ifdef MOD_CAM
+  if (localStreamActive) return;  // Nao reconectar durante stream local
+  #endif
   if (millis() - lastWiFiRetry < WIFI_RETRY_INTERVAL) return;
   lastWiFiRetry = millis();
 

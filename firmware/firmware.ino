@@ -8,6 +8,7 @@
 
 // ===== BIBLIOTECAS =====
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <WebServer.h>
 #include <Preferences.h>
 #include <DNSServer.h>
@@ -83,6 +84,8 @@ unsigned long lastLiveFrame = 0;
 #define LIVE_FRAME_INTERVAL 800
 #define LIVE_MAX_DURATION 120000
 unsigned long liveStartTime = 0;
+framesize_t captureFrameSize = FRAMESIZE_SVGA;  // SVGA 800x600 — melhor relacao qualidade/tamanho para processamento
+int captureQuality = 5;                          // q5 — maxima nitidez para deteccao em plantas
 #endif
 
 // ===== FORWARD DECLARATIONS (funcoes compostas usadas pelos modulos) =====
@@ -195,6 +198,10 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
+  // Hardware comum
+  pinMode(RESET_BTN, INPUT_PULLUP);
+  pinMode(LED_ONBOARD, OUTPUT);
+
   // Modulos: setup hardware
   #ifdef MOD_CAM
   cam_setup();
@@ -258,9 +265,7 @@ void setup() {
 // ===== LOOP =====
 
 void loop() {
-  #ifdef MOD_HIDRO
   checkResetButton();
-  #endif
 
   handleSerialCommands();
   dnsServer.processNextRequest();

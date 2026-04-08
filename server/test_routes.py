@@ -23,13 +23,13 @@ env = sys.argv[2] if len(sys.argv) > 2 else "local"
 PRODUCTS = {
     "ctrl": {
         "local": "http://localhost:5002",
-        "vps": "https://hidro.cultivee.com.br",
+        "vps": "https://app.cultivee.com.br",
         "prefix": "/api/ctrl",
         "chip_id": "TEST_CTRL_99", "short_id": "TC99", "caps": ["hidro"],
     },
     "hidro-cam": {
         "local": "http://localhost:5003",
-        "vps": "https://hidro-cam.cultivee.com.br",
+        "vps": "https://app.cultivee.com.br",
         "prefix": "/api/hidro-cam",
         "chip_id": "TEST_HCAM_99", "short_id": "TH99", "caps": ["hidro", "cam"],
     },

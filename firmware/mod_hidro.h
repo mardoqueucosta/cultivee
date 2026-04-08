@@ -217,41 +217,7 @@ void updateStatusLed() {
   }
 }
 
-// ===================== RESET BUTTON =====================
-
-void checkResetButton() {
-  static unsigned long pressStart = 0;
-  static bool wasPressed = false;
-
-  if (digitalRead(RESET_BTN) == LOW) {
-    if (!wasPressed) {
-      pressStart = millis();
-      wasPressed = true;
-      Serial.println("Botao pressionado...");
-    }
-    if (millis() - pressStart > 1000) {
-      digitalWrite(LED_ONBOARD, (millis() / 200) % 2);
-    }
-    if (millis() - pressStart >= 3000) {
-      Serial.println(">>> RESET WiFi via botao! <<<");
-      digitalWrite(LED_ONBOARD, HIGH);
-      delay(500);
-      digitalWrite(LED_ONBOARD, LOW);
-      delay(200);
-      digitalWrite(LED_ONBOARD, HIGH);
-      delay(500);
-      digitalWrite(LED_ONBOARD, LOW);
-      clearWiFiCredentials();
-      ESP.restart();
-    }
-  } else {
-    if (wasPressed) {
-      digitalWrite(LED_ONBOARD, LOW);
-      Serial.println("Botao solto antes dos 3s");
-    }
-    wasPressed = false;
-  }
-}
+// checkResetButton() movido para core_server.h (compartilhado entre modulos)
 
 // ===================== STATUS JSON =====================
 
@@ -788,8 +754,6 @@ bool hidro_process_command(String cmd, String obj) {
 void hidro_setup() {
   pinMode(RELE_LAMPADA, OUTPUT);
   pinMode(RELE_BOMBA, OUTPUT);
-  pinMode(LED_ONBOARD, OUTPUT);
-  pinMode(RESET_BTN, INPUT_PULLUP);
   setRelay(RELE_LAMPADA, false);
   setRelay(RELE_BOMBA, false);
 

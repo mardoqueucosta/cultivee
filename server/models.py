@@ -220,9 +220,11 @@ def register_module(chip_id, short_id, module_type="ctrl", ip="", ssid="", rssi=
             new_data = json.loads(ctrl_data or "{}")
         except (json.JSONDecodeError, TypeError):
             new_data = {}
-        # Campos de config (save-config) — servidor e fonte da verdade.
+        # Campos de config — servidor e fonte da verdade.
         # ESP32 apenas ecoa; nunca deve sobrescrever o que o app salvou.
-        server_keys = ("phases", "num_phases", "start_date")
+        server_keys = ("phases", "num_phases", "start_date",
+                       "recording", "capture_interval", "cam_resolution",
+                       "cam_quality", "last_capture_at")
         for k in server_keys:
             if k in existing_data:
                 new_data[k] = existing_data[k]
@@ -477,53 +479,41 @@ def remove_module_from_group(chip_id, user_id):
 # --- Captura agendada ---
 
 def set_capture_config(chip_id, capture_interval=None, recording=None, cam_resolution=None, cam_quality=None):
-    conn = get_db()
-    updates = []
-    params = []
+    data = {}
     if capture_interval is not None:
-        updates.append("capture_interval = ?")
-        params.append(int(capture_interval))
+        data["capture_interval"] = int(capture_interval)
     if recording is not None:
-        updates.append("recording = ?")
-        params.append(1 if recording else 0)
+        data["recording"] = 1 if recording else 0
     if cam_resolution is not None:
-        updates.append("cam_resolution = ?")
-        params.append(str(cam_resolution))
+        data["cam_resolution"] = str(cam_resolution)
     if cam_quality is not None:
-        updates.append("cam_quality = ?")
-        params.append(int(cam_quality))
-    if not updates:
-        conn.close()
+        data["cam_quality"] = int(cam_quality)
+    if not data:
         return
-    params.append(chip_id)
-    conn.execute(f"UPDATE modules SET {', '.join(updates)} WHERE chip_id = ?", params)
-    conn.commit()
-    conn.close()
+    update_ctrl_data(chip_id, data)
 
 
 def get_capture_config(chip_id):
     conn = get_db()
     row = conn.execute(
-        "SELECT capture_interval, recording, last_capture_at FROM modules WHERE chip_id = ?",
+        "SELECT ctrl_data FROM modules WHERE chip_id = ?",
         (chip_id,)
     ).fetchone()
     conn.close()
     if not row:
-        return {"capture_interval": 600, "recording": False, "last_capture_at": None}
+        return {"capture_interval": 600, "recording": False, "last_capture_at": None, "cam_resolution": "UXGA", "cam_quality": 10}
+    try:
+        data = json.loads(row["ctrl_data"] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        data = {}
     return {
-        "capture_interval": row["capture_interval"] or 600,
-        "recording": bool(row["recording"]),
-        "last_capture_at": row["last_capture_at"],
-        "cam_resolution": row["cam_resolution"] or "UXGA",
-        "cam_quality": row["cam_quality"] or 10,
+        "capture_interval": data.get("capture_interval", 600),
+        "recording": bool(data.get("recording", False)),
+        "last_capture_at": data.get("last_capture_at"),
+        "cam_resolution": data.get("cam_resolution", "UXGA"),
+        "cam_quality": data.get("cam_quality", 10),
     }
 
 
 def mark_capture(chip_id):
-    conn = get_db()
-    conn.execute(
-        "UPDATE modules SET last_capture_at = ? WHERE chip_id = ?",
-        (datetime.now().isoformat(), chip_id)
-    )
-    conn.commit()
-    conn.close()
+    update_ctrl_data(chip_id, {"last_capture_at": datetime.now().isoformat()})

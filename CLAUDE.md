@@ -60,6 +60,7 @@ cultivee/
 ├── site/                     # cultivee.com.br — Landing page (React + Nginx)
 ├── docker-compose.yml        # FONTE DA VERDADE — 2 containers (site + app)
 ├── deploy.sh                 # Deploy automatizado para VPS
+├── PRD-Cultivee.md           # FONTE DA VERDADE — Product Requirements Document
 └── CLAUDE.md                 # ESTE ARQUIVO
 ```
 
@@ -123,7 +124,7 @@ ESP32 boot → connectWiFi → registerOnServer (POST /api/modules/register)
 - **Porta:** COM7
 - **Board:** esp32:esp32:esp32doit-devkit-v1
 - **Flash:** 90%
-- **Reles:** GPIO4 (Luz), GPIO5 (Bomba) — ativos em HIGH
+- **Reles:** GPIO4 (Luz), GPIO5 (Bomba) — ativos em LOW
 - **AP:** Cultivee-Hidro
 - **SERVER_URL prod:** `http://hidro.cultivee.com.br`
 - **APP_URL prod:** `https://hidro.cultivee.com.br`
